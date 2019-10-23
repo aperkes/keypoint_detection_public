@@ -192,15 +192,4 @@ while(1):
         I = draw_skeleton(I, vkeypoint, radius=4)
         img_fname = os.path.join(img_dir, 'frame_'+frame_num+'_cam_'+str(i)+'.jpg')
         cv2.imwrite(img_fname, I[:, :, ::-1])
-    #     
-
-    # import ipdb
-    # ipdb.set_trace()
-    # for i in range(4):
-    #     I = frames_orig[i].astype(np.uint8)
-    #     I = cv2.rectangle(I, start, end, [255,0,0],  thickness=5)
-    #     # plt.rcParams['figure.figsize'] = (10, 10)
-    #     # plt.imshow(I)
-    #     img_fname = os.path.join(img_dir, 'frame_'+frame_num+'_cam_'+str(i)+'.jpg')
-    #     cv2.imwrite(img_fname, I[:, :, ::-1])
     cnt += 1
