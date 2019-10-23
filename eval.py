@@ -94,6 +94,10 @@ def build_network_transform(minSize=800, maxSize=1333, mean=None, std=None):
     
     return transform
 
+## Try to get it onto GPU:
+
+device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--checkpoint', default='/NAS/home/Projects/bird_keypoints/logs/bird-keyp-new/checkpoints/2019_10_15-15_08_09.pt', help='Path to pretrained checkpoint')
 parser.add_argument('--data_dir', default=None, required=True, help='Directory containing video')
@@ -106,11 +110,15 @@ network_transform = build_network_transform()
 
 backbone = resnet_fpn_backbone(backbone_name='resnet101', pretrained=False)
 model = MaskRCNN(backbone, num_classes=2)
+model.to(device)
 model.transform = network_transform
 model.eval()
-model.load_state_dict(torch.load('/NAS/home/MaskRCNN_Torch_Bird/MaskRCNN_Torch_Bird/model_5.pth'))
+#model.load_state_dict(torch.load('/NAS/home/MaskRCNN_Torch_Bird/MaskRCNN_Torch_Bird/model_5.pth'))
+model.load_state_dict(torch.load('/home/ammon/Documents/Scripts/keypoint_detection/MaskRCNN_Torch_Bird/model_5.pth'))
 
 model_keypoints = pose_resnet(resnet_layers=50, num_classes=20).cuda()
+model_keypoints.to(device)
+
 if args.checkpoint is not None:
     checkpoint = torch.load(args.checkpoint)
     model_keypoints.load_state_dict(checkpoint['model'])
@@ -130,9 +138,9 @@ cap = cv2.VideoCapture(os.path.join(args.data_dir, args.video))
 cnt = 0
 while(1):
     ret, frame = cap.read()
-    frame = frame[:, :, ::-1]
     if not ret:
         break
+    frame = frame[:, :, ::-1]
     frames = []
     frames_orig = []
     frames_keypoints = []
@@ -145,8 +153,10 @@ while(1):
     frames_orig.append(frame[:height//2, width//2:, :])
     frames_orig.append(frame[height//2:, :width//2, :])
     frames_orig.append(frame[height//2:, width//2:, :])
+
     with torch.no_grad():
-        outputs = model(frames)
+        #outputs = model(frames)
+        outputs = model([f.cuda() for f in frames])
     # import ipdb
     # ipdb.set_trace()
     boxes = []
