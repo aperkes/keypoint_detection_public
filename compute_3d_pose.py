@@ -37,22 +37,27 @@ def triangulate_points(x, P):
     tuples = [(0,1),(0,2),(0,3),(1,2),(1,3),(2,3)]
     X = []
     reproj_error = np.zeros(6)
+    conf = x[:,2]
     for i in range(len(tuples)):
         t = tuples[i]
         P1 = P[t[0]]
         P2 = P[t[1]]
-        p1 = x[t[0]] 
-        p2 = x[t[1]] 
+        p1, c1 = x[t[0], 0:2], x[t[0], 2]
+        p2, c2 = x[t[1], 0:2], x[t[0], 2]
         p3d = cv2.triangulatePoints(P1, P2, p1, p2)
         X.append(p3d/p3d[-1])
+#        print(t[0], t[1], ' uv: ', p1, p2, ' -> ', np.transpose((p3d/p3d[-1])[:-1]))
         re = []
         for j in range(4):
             reproj = np.matmul(P[j],p3d)
             reproj = reproj[:2] / reproj[-1]
-            error = np.sum((reproj - x[j][:, None]) ** 2)
+            error_raw = np.sum((reproj - x[j, 0:2][:, None]) ** 2)
+            error = error_raw * np.exp(2.0*(3.0 - (c1 + c2 + conf[j])))
+#            print(error_raw, ' cooked: ', error, ' c1: ', c1, ' c2: ', c2, ' c3: ', conf[j])
             re.append(error)
         reproj_error[i] = np.median(np.array(re))
     ind = np.argmin(reproj_error)
+#    print('reproj error: ', reproj_error[ind], ' X: ', X[ind][:-1,0])
     return X[ind][:-1,0]
 
 def compute_3d_pose(data_dir, calib_file='/NAS/home/bird_postures/postures_2017/extrinsic_calib.yaml'):
@@ -63,11 +68,9 @@ def compute_3d_pose(data_dir, calib_file='/NAS/home/bird_postures/postures_2017/
         return
         
     keypoints = np.load(join(data_dir, 'pred_keypoints_2d.npy'))
-    keypoints = np.reshape(keypoints, (-1,4,20,3))
-    
-    X = np.zeros((keypoints.shape[0], keypoints.shape[2], 3))
-    for frame in tqdm(range(keypoints.shape[0])):
-        for kpt in range(keypoints.shape[2]):
-            X[frame, kpt, :] = triangulate_points(keypoints[frame,:,kpt,:-1], P)
+    X = np.zeros((keypoints.shape[3], keypoints.shape[1], 3))
+    for frame in tqdm(range(keypoints.shape[3])):
+        for kpt in range(keypoints.shape[1]):
+            X[frame, kpt, :] = triangulate_points(keypoints[:,kpt,:,frame], P)
     np.save(join(data_dir, 'pred_keypoints_3d.npy'), X)
 
