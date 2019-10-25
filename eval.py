@@ -102,6 +102,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--checkpoint', default='/NAS/home/Projects/bird_keypoints/logs/bird-keyp-new/checkpoints/2019_10_15-15_08_09.pt', help='Path to pretrained checkpoint')
 parser.add_argument('--data_dir', default=None, required=True, help='Directory containing video')
 parser.add_argument('--video', default=None, required=True, help='Video name')
+parser.add_argument('--visualize', default=False, action='store_true', help='Save frames and visualize keypoints')
+parser.add_argument('--calib_file', default=None, help='Camera calibration')
 
 args = parser.parse_args()
 
@@ -136,6 +138,7 @@ if not os.path.exists(img_dir):
     os.makedirs(img_dir)
 cap = cv2.VideoCapture(os.path.join(args.data_dir, args.video))
 cnt = 0
+keypoints_2d = []
 while(1):
     ret, frame = cap.read()
     if not ret:
@@ -189,6 +192,7 @@ while(1):
         keypoint_locs[:,:,:-1] = keypoint_locs[:,:,:-1] * 4 * scale[:,None,None] / 256.
         keypoint_locs[:,:,:-1] += offset[:,None,:]
     keypoint_locs = keypoint_locs.cpu().numpy()
+    keypoints_2d.append(keypoint_locs)
     for i in range(4):
         I = frames_orig[i].astype(np.uint8)
         box = boxes[i]
@@ -199,7 +203,12 @@ while(1):
         vkeypoint = {}
         for key in visualization_keypoints.keys():
             vkeypoint[key] = keypoint[visualization_keypoints[key], :2]
-        I = draw_skeleton(I, vkeypoint, radius=4)
-        img_fname = os.path.join(img_dir, 'frame_'+frame_num+'_cam_'+str(i)+'.jpg')
-        cv2.imwrite(img_fname, I[:, :, ::-1])
+        if args.visualize:
+            I = draw_skeleton(I, vkeypoint, radius=4)
+            img_fname = os.path.join(img_dir, 'frame_'+frame_num+'_cam_'+str(i)+'.jpg')
+            cv2.imwrite(img_fname, I[:, :, ::-1])
     cnt += 1
+keypoints_2d = np.stack(keypoints_2d, axis=-1)
+np.save(os.path.join(out_dir, 'pred_keypoints_2d.npy'), keypoints_2d)
+# args.calib file should be the calibration.yaml file that Berndt generated
+compute_3d_pose(out_dir, calib_file=args.calib_file)
