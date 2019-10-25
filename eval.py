@@ -16,6 +16,7 @@ from torchvision.models.detection.mask_rcnn import MaskRCNN
 from models import pose_resnet
 import argparse
 from visualize_keypoints import visualization_keypoints, draw_skeleton
+from compute_3d_pose import compute_3d_pose
 
 def heatmaps_to_locs(heatmaps):
     num_images = heatmaps.shape[0]
