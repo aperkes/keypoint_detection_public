@@ -10,6 +10,7 @@ for f in $FILES
     do
         echo "Processing $f..."
         file_name=$(basename "$f")
-        calib_path=$calib_dir$file_name"/calibration.yaml"
+        file_trim=${file_name%.w*}
+        calib_name=$calib_dir$file_trim"/calibration/calibration.yaml"
         python /home/ammon/Documents/Scripts/keypoint_detection/eval.py --data_dir=$base_dir --video=$f --checkpoint=/home/ammon/Documents/Scripts/keypoint_detection/models/keypoint_model_checkpoint.pt --calib=$calib_path
     done
