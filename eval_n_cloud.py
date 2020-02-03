@@ -17,6 +17,7 @@ from models import pose_resnet
 import argparse
 from visualize_keypoints import visualization_keypoints, draw_skeleton
 from compute_3d_pose import compute_3d_pose
+from voxel_carving import voxel_carving
 
 def heatmaps_to_locs(heatmaps):
     num_images = heatmaps.shape[0]
@@ -97,17 +98,19 @@ def build_network_transform(minSize=800, maxSize=1333, mean=None, std=None):
 
 ## Try to get it onto GPU:
 
+print('Load arguments')
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--checkpoint', default='/NAS/home/Projects/bird_keypoints/logs/bird-keyp-new/checkpoints/2019_10_15-15_08_09.pt', help='Path to pretrained checkpoint')
-parser.add_argument('--data_dir', default=None, required=True, help='Directory containing video')
-parser.add_argument('--video', default=None, required=True, help='Video name')
+parser.add_argument('--checkpoint', default='/home/ammon/Documents/Scripts/keypoint_detection/models/keypoint_model_checkpoint.pt', help='Path to pretrained checkpoint')
+parser.add_argument('--data_dir', default='/data/birds/postures/birdview-2019/', required=False, help='Directory containing video')
+parser.add_argument('--video', default='2019-06-08-13-16-12_BDY.wav.mp4', required=False, help='Video name')
 parser.add_argument('--visualize', default=False, action='store_true', help='Save frames and visualize keypoints')
-parser.add_argument('--calib_file', default=None, help='Camera calibration')
+parser.add_argument('--calib_file', default='/data/birds/postures/calibrations/birdview/2019-06-08-13-16-12_BDY/calibration/calibration.yaml', help='Camera calibration')
 
 args = parser.parse_args()
 
+print('setting up networks')
 transform = build_transform()
 network_transform = build_network_transform()
 
@@ -119,10 +122,12 @@ model.eval()
 #model.load_state_dict(torch.load('/NAS/home/MaskRCNN_Torch_Bird/MaskRCNN_Torch_Bird/model_5.pth'))
 model.load_state_dict(torch.load('/home/ammon/Documents/Scripts/keypoint_detection/MaskRCNN_Torch_Bird/model_5.pth'))
 
+"""#Comment out these lines if you are doing keypoints
 model_keypoints = pose_resnet(resnet_layers=50, num_classes=20).cuda()
 model_keypoints.to(device)
 
 if args.checkpoint is not None:
+    print('loading checkpoint')
     checkpoint = torch.load(args.checkpoint)
     model_keypoints.load_state_dict(checkpoint['model'])
 model_keypoints.cuda()
@@ -137,9 +142,15 @@ out_dir = os.path.join(args.data_dir, args.video.split('.')[0])
 img_dir = os.path.join(out_dir, 'images')
 if not os.path.exists(img_dir):
     os.makedirs(img_dir)
+"""# Uncomment
+
 cap = cv2.VideoCapture(os.path.join(args.data_dir, args.video))
 cnt = 0
 keypoints_2d = []
+volumes = []
+clouds = []
+print('loading video')
+count = 0
 while(1):
     ret, frame = cap.read()
     if not ret:
@@ -149,6 +160,7 @@ while(1):
     frames_orig = []
     frames_keypoints = []
     height, width = frame.shape[:2]
+## Split out the mp4 frame into the 4 original camera frames (and convert to RGB)
     frames.append(transform(Image.fromarray(frame[:height//2, :width//2, :]).convert('RGB')))
     frames.append(transform(Image.fromarray(frame[:height//2, width//2:, :]).convert('RGB')))
     frames.append(transform(Image.fromarray(frame[height//2:, :width//2, :]).convert('RGB')))
@@ -160,19 +172,27 @@ while(1):
 
     with torch.no_grad():
         #outputs = model(frames)
+## Spit out the outputs of maskRCNN
         outputs = model([f.cuda() for f in frames])
     # import ipdb
     # ipdb.set_trace()
     boxes = []
     offset = []
     scales = []
+    masks = []
     frame_num = str(cnt).zfill(6)
+    print('getting masks')
     for i in range(len(frames)):
         box = outputs[i]['boxes'][0].cpu().numpy()
+## I'm not sure why I need the extra 0 here, maybe for ultiple instances of the same thing?
+        mask = outputs[i]['masks'][0][0].cpu().numpy()
+        masks.append(mask)
         center_x = 0.5*(box[0] + box[2])
         center_y = 0.5*(box[1] + box[3])
         scale = max(box[2] - box[0], box[3] - box[1])
 ###NOTE: Need to get this scaling right to both catch the tale and note fale everything
+###NOTE: THIS IS WHERE I do voxel carving!! But I need to get the masks, not the boxes. outputs[i]['masks'][0]
+## I think I can boot it up as a thread in python and it won't even slow me down. 
         scale = 1.2 * scale
         #scale = 1.4 * scale
         scales.append(scale)
@@ -185,10 +205,22 @@ while(1):
         box = box.astype(int)
         boxes.append(box)
         offset.append([min_x, min_y])
-        frames_keypoints.append(keypoint_transform((Image.fromarray(frames_orig[i]), box_keypoints)))
+        #frames_keypoints.append(keypoint_transform((Image.fromarray(frames_orig[i]), box_keypoints)))
+    count += 1
+    masks = np.array(masks)
+    print('voxel_carving frame',count)
+    point_cloud,meta_data = voxel_carving(masks,args.calib_file,count=count,plot_me=True)
+    clouds.append(point_cloud)
+    print(meta_data['n_points'])
+    volumes.append(meta_data['n_points'])
+
+    #save_name = './masks/mask_' + str(count) + '.npy'
+
+    """
     keypoint_frames = torch.stack(frames_keypoints, dim=0).cuda()
     scale = torch.tensor(scales).cuda().view(-1)
     offset = torch.tensor(offset).cuda().view(-1, 2)
+
     with torch.no_grad():
         output = model_keypoints(keypoint_frames)[0]
         keypoint_locs = torch.from_numpy(heatmaps_to_locs(output)).cuda()
@@ -215,3 +247,8 @@ keypoints_2d = np.stack(keypoints_2d, axis=-1)
 np.save(os.path.join(out_dir, 'pred_keypoints_2d.npy'), keypoints_2d)
 # args.calib_file file should be the calibration.yaml file that Berndt generated
 compute_3d_pose(out_dir, calib_file=args.calib_file)
+"""
+
+np.save('./clouds_test.npy',np.array(clouds))
+np.save('./volume_test.npy',np.array(volumes))
+print('All done!')
