@@ -68,32 +68,40 @@ def voxel_carving(masks,calib_file,count=0,plot_me=False):
         'Spread':None
     }
     if plot_me:
-        if len(point_cloud) > 0:
-            print('plotting things')
-            color_map = cm.get_cmap('viridis')
-            fig = plt.figure()
-            ax = fig.add_subplot(111,projection='3d')
-            if False: # Down sampling isn't really necessary, and would mess up my volume calculation. 
-                sub_points = random.sample(range(len(point_cloud)),2000)
-            else:
-                sub_points = range(len(point_cloud))
-            z_max,z_min = np.max(point_cloud[:,2]),np.min(point_cloud[:,2])
-            z_range = z_max-z_min
-            for p in sub_points:
-                height_ratio = (point_cloud[p,2] - z_min) / z_range
-                #ax.scatter(sub_points[p,0],sub_points[p,1],sub_points[p,2],alpha=.5)
-                ax.scatter(point_cloud[p,0],point_cloud[p,1],point_cloud[p,2],alpha=.3,color=color_map(height_ratio))
-            file_name = './clouds/frame_' + '%04d'%count + '.png'
-            ax.set_xlim([0,400])
-            ax.set_ylim([0,400])
-            ax.set_zlim([0,400])
-            ax.w_xaxis.set_pane_color([0,0,0,1])
-            ax.w_yaxis.set_pane_color([0,0,0,1])
-            ax.w_zaxis.set_pane_color([0,0,0,1])
-            fig.tight_layout()
-            fig.savefig(file_name)
-            plt.close(fig) 
+        plot_cloud(point_cloud,count)
     return point_cloud, meta_data
+
+## Plots point cloud and saves it as an image (with id 'n')
+def plot_cloud(point_cloud,n,meta_data = None):
+    if len(point_cloud) > 0:
+        print('plotting things')
+        color_map = cm.get_cmap('viridis')
+        fig = plt.figure()
+        ax = fig.add_subplot(111,projection='3d')
+        if False: # Down sampling isn't really necessary, and would mess up my volume calculation. 
+            sub_points = random.sample(range(len(point_cloud)),2000)
+        else:
+            sub_points = range(len(point_cloud))
+        z_max,z_min = np.max(point_cloud[:,2]),np.min(point_cloud[:,2])
+        z_range = z_max-z_min
+        for p in sub_points:
+            height_ratio = (point_cloud[p,2] - z_min) / z_range
+            #ax.scatter(sub_points[p,0],sub_points[p,1],sub_points[p,2],alpha=.5)
+            ax.scatter(point_cloud[p,0],point_cloud[p,1],point_cloud[p,2],alpha=.3,color=color_map(height_ratio))
+        file_name = './clouds/frame_' + '%04d'%n + '.png'
+        ax.set_xlim([0,400])
+        ax.set_ylim([0,400])
+        ax.set_zlim([0,400])
+        ax.w_xaxis.set_pane_color([0,0,0,1])
+        ax.w_yaxis.set_pane_color([0,0,0,1])
+        ax.w_zaxis.set_pane_color([0,0,0,1])
+        fig.tight_layout()
+        fig.savefig(file_name)
+        plt.close(fig) 
+    return
+
+def round_by(x,m):
+    return (x // m) * m
 
 # AS above, but iterates through at a rough resolution first
 def voxel_carving_iterative(masks,calib_file,count=0,plot_me=False):
@@ -113,6 +121,7 @@ def voxel_carving_iterative(masks,calib_file,count=0,plot_me=False):
     FINE = 5
     blocks = []
     course_masks = []
+## Down sample the masks, this appears to be a good method
     for mask in masks:
         course_masks.append(block_reduce(mask,(COURSE_mask,COURSE_mask),np.max))
     for x in np.arange(DIM_x[0] + COURSE / 2,DIM_x[1],COURSE):    
@@ -155,11 +164,20 @@ def voxel_carving_iterative(masks,calib_file,count=0,plot_me=False):
                     blocks.append((x,y,z))
                     #point_cloud.append(point_3d[:3])
 
-    pdb.set_trace()
+    checked_points = {} 
+## Need to go by even digits, even if the blocks came from weird places...a bit hacky, but an easy check.
     for block in blocks:
-        for x in np.arange(block[0]-COURSE/2,block[0]+COURSE/2,FINE):
-            for y in np.arange(block[1]-COURSE/2,block[1]+COURSE/2,FINE):
-                for z in np.arange(block[2]-COURSE/2,block[2]+COURSE/2,FINE):
+        x0,x1 = round_by(block[0] - COURSE,FINE),round_by(block[0] + COURSE + 5,FINE)
+        y0,y1 = round_by(block[1] - COURSE,FINE),round_by(block[1] + COURSE + 5,FINE)
+        z0,z1 = round_by(block[2] - COURSE,FINE),round_by(block[2] + COURSE + 5,FINE)
+        for x in np.arange(x0,x1,FINE):
+            for y in np.arange(y0,y1,FINE):
+                for z in np.arange(z0,z1,FINE):
+## Try to efficiently skip overlaps, hopefully memory complexity isn't an issue here...
+                    if (x,y,z) in checked_points:
+                        continue
+                    else:
+                        checked_points[(x,y,z)] = 1
                     checks = np.zeros(4)
                     for c in range(4):
                         #pdb.set_trace()
@@ -187,39 +205,16 @@ def voxel_carving_iterative(masks,calib_file,count=0,plot_me=False):
                         #pdb.set_trace()
                         point_cloud.append(point_3d[:3])
                      
+    #pdb.set_trace()
     point_cloud = np.array(point_cloud)
     meta_data = {
         'n_points':len(point_cloud),
         'volume':0,
-        'Angle':None,
-        'Spread':None
+        'angle':None,
+        'spread':None
     }
     if plot_me:
-        if len(point_cloud) > 0:
-            print('plotting things')
-            color_map = cm.get_cmap('viridis')
-            fig = plt.figure()
-            ax = fig.add_subplot(111,projection='3d')
-            if False: # Down sampling isn't really necessary, and would mess up my volume calculation. 
-                sub_points = random.sample(range(len(point_cloud)),2000)
-            else:
-                sub_points = range(len(point_cloud))
-            z_max,z_min = np.max(point_cloud[:,2]),np.min(point_cloud[:,2])
-            z_range = z_max-z_min
-            for p in sub_points:
-                height_ratio = (point_cloud[p,2] - z_min) / z_range
-                #ax.scatter(sub_points[p,0],sub_points[p,1],sub_points[p,2],alpha=.5)
-                ax.scatter(point_cloud[p,0],point_cloud[p,1],point_cloud[p,2],alpha=.3,color=color_map(height_ratio))
-            file_name = './clouds/frame_' + '%04d'%count + '.png'
-            ax.set_xlim([0,400])
-            ax.set_ylim([0,400])
-            ax.set_zlim([0,400])
-            ax.w_xaxis.set_pane_color([0,0,0,1])
-            ax.w_yaxis.set_pane_color([0,0,0,1])
-            ax.w_zaxis.set_pane_color([0,0,0,1])
-            fig.tight_layout()
-            fig.savefig(file_name)
-            plt.close(fig) 
+        plot_cloud(point_cloud,count)
     return point_cloud, meta_data
 
 
@@ -229,6 +224,6 @@ if __name__ == "__main__":
     calib_file = './test.yaml'
     print('Doing real stuff...')
     point_cloud,meta_data1 = voxel_carving(masks,calib_file)
-    print('old points:',len(point_cloud))
+    #print('old points:',len(point_cloud))
     point_cloud,meta_data = voxel_carving_iterative(masks,calib_file)
     print('N-points:',meta_data['n_points'])
