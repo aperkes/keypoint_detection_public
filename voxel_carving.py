@@ -12,10 +12,10 @@ import random
 ## All I need is calibration and the masks
 
 RES = 5 #mm, size of voxels
-DIMS = [400,400,400] # Cage dimensions in mm
-DIM_x = [50,350]
-DIM_y = [50,350]
-DIM_z = [50,350]
+DIMS = [500,500,500] # Cage dimensions in mm
+DIM_x = [0,500]
+DIM_y = [0,500]
+DIM_z = [0,500]
 DIM_u = 1024
 DIM_v = 1024
 MASK_THRESH = .1
@@ -57,6 +57,7 @@ def voxel_carving(masks,calib_file,count=0,plot_me=False):
                 if np.sum(checks) == 4:
                     #print('found a point!')
                     #pdb.set_trace()
+
                     point_cloud.append(point_3d[:3])
 
     point_cloud = np.array(point_cloud)
@@ -106,16 +107,21 @@ def voxel_carving_iterative(masks,calib_file,count=0,plot_me=False):
     print('lopping through the stuff')
     point_cloud = []
 ## Define the course and fine resolutions.
-    COURSE = int(len(masks[0]) / 10) # in practice, 108
+    n_blocks = 8
+    COURSE = DIMS[0] / n_blocks 
+    COURSE_mask = round(len(masks[0]) / n_blocks)
     FINE = 5
     blocks = []
     course_masks = []
     for mask in masks:
-        course_masks.append(block_reduce(mask,(COURSE,COURSE),np.mean))
-    for x in np.arange(DIM_x[0],DIM_x[1],COURSE):    
-        for y in np.arange(DIM_y[0],DIM_y[1],COURSE):
-            for z in range(DIM_z[0],DIM_z[1],COURSE):
+        course_masks.append(block_reduce(mask,(COURSE_mask,COURSE_mask),np.max))
+    for x in np.arange(DIM_x[0] + COURSE / 2,DIM_x[1],COURSE):    
+        for y in np.arange(DIM_y[0] + COURSE / 2,DIM_y[1],COURSE):
+            for z in np.arange(DIM_z[0] + COURSE / 2,DIM_z[1],COURSE):
+                #print(x,y,z)
                 checks = np.zeros(4)
+                old_checks = np.zeros(4)
+                #pdb.set_trace()
                 for c in range(4):
                     #pdb.set_trace()
                     #mask = masks[c]
@@ -123,16 +129,20 @@ def voxel_carving_iterative(masks,calib_file,count=0,plot_me=False):
                     point_3d = np.array([x,y,z,1000]) ## Need this in homogonous coordinates
                     reproj = np.matmul(P[c],point_3d/point_3d[-1])
                     reproj = reproj[:2] / reproj[-1]
-                    u,v = int(reproj[0]),int(reproj[1])
-                    u_c = int(u / COURSE)
-                    v_c = int(v / COURSE) 
+                    u,v = int(round(reproj[0])),int(round(reproj[1]))
+                    u_c = int(u / COURSE_mask)
+                    v_c = int(v / COURSE_mask)
                     #pdb.set_trace()
 ## IF it's not in the frame, it's not in the mask
                     if u < 0 or v < 0:
                         break
                     elif u >= DIM_u or v >= DIM_v:
                         break 
-                    elif mask[v,u] >= MASK_THRESH:
+                    elif masks[c][v,u] >= MASK_THRESH:
+                        old_checks[c] = 1
+                        #pdb.set_trace()
+                        pass
+                    if mask[v_c,u_c] >= MASK_THRESH:
                         checks[c] = 1
                         continue
 ## If it isn't in the mask, skip to the next voxel
@@ -145,10 +155,11 @@ def voxel_carving_iterative(masks,calib_file,count=0,plot_me=False):
                     blocks.append((x,y,z))
                     #point_cloud.append(point_3d[:3])
 
+    pdb.set_trace()
     for block in blocks:
-        for x in np.arange(block[0],block[0]+COURSE,FINE):
-            for y in np.arange(block[1],block[1]+COURSE,FINE):
-                for z in np.arange(block[2],block[2]+COURSE,FINE):
+        for x in np.arange(block[0]-COURSE/2,block[0]+COURSE/2,FINE):
+            for y in np.arange(block[1]-COURSE/2,block[1]+COURSE/2,FINE):
+                for z in np.arange(block[2]-COURSE/2,block[2]+COURSE/2,FINE):
                     checks = np.zeros(4)
                     for c in range(4):
                         #pdb.set_trace()
@@ -217,5 +228,7 @@ if __name__ == "__main__":
     masks = np.load('./masks/mask_125.npy')
     calib_file = './test.yaml'
     print('Doing real stuff...')
+    point_cloud,meta_data1 = voxel_carving(masks,calib_file)
+    print('old points:',len(point_cloud))
     point_cloud,meta_data = voxel_carving_iterative(masks,calib_file)
     print('N-points:',meta_data['n_points'])
