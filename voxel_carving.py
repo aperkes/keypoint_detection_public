@@ -11,6 +11,7 @@ import random
 
 ## All I need is calibration and the masks
 
+## So far these are hard coded, but DIM_u should probably be extracted
 RES = 5 #mm, size of voxels
 DIMS = [500,500,500] # Cage dimensions in mm
 DIM_x = [0,500]
@@ -21,6 +22,7 @@ DIM_v = 1024
 MASK_THRESH = .1
 
 def voxel_carving(masks,calib_file,count=0,plot_me=False):
+    dim_v,dim_u = np.shape(masks[0])
     try:
         print('getting params')
         _,_,P,_ = get_camera_params(calib_file)
@@ -45,7 +47,7 @@ def voxel_carving(masks,calib_file,count=0,plot_me=False):
 ## IF it's not in the frame, it's not in the mask
                     if u < 0 or v < 0:
                         break
-                    elif u >= DIM_u or v >= DIM_v:
+                    elif u >= dim_u or v >= DIM_v:
                         break 
                     elif mask[v,u] >= MASK_THRESH:
                         checks[c] = 1
@@ -105,6 +107,7 @@ def round_by(x,m):
 
 # AS above, but iterates through at a rough resolution first
 def voxel_carving_iterative(masks,calib_file,count=0,plot_me=False):
+    dim_v,dim_u = np.shape(masks[0])
     try:
         print('getting params')
         _,_,P,_ = get_camera_params(calib_file)
@@ -145,7 +148,7 @@ def voxel_carving_iterative(masks,calib_file,count=0,plot_me=False):
 ## IF it's not in the frame, it's not in the mask
                     if u < 0 or v < 0:
                         break
-                    elif u >= DIM_u or v >= DIM_v:
+                    elif u >= dim_u or v >= dim_v:
                         break 
                     elif masks[c][v,u] >= MASK_THRESH:
                         old_checks[c] = 1
@@ -191,7 +194,7 @@ def voxel_carving_iterative(masks,calib_file,count=0,plot_me=False):
 ## IF it's not in the frame, it's not in the mask
                         if u < 0 or v < 0:
                             break
-                        elif u >= DIM_u or v >= DIM_v:
+                        elif u >= dim_u or v >= DIM_v:
                             break 
                         elif mask[v,u] >= MASK_THRESH:
                             checks[c] = 1
@@ -223,7 +226,7 @@ if __name__ == "__main__":
     masks = np.load('./masks/mask_125.npy')
     calib_file = './test.yaml'
     print('Doing real stuff...')
-    point_cloud,meta_data1 = voxel_carving(masks,calib_file)
+    #point_cloud,meta_data1 = voxel_carving(masks,calib_file)
     #print('old points:',len(point_cloud))
     point_cloud,meta_data = voxel_carving_iterative(masks,calib_file)
     print('N-points:',meta_data['n_points'])

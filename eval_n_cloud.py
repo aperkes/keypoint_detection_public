@@ -17,7 +17,7 @@ from models import pose_resnet
 import argparse
 from visualize_keypoints import visualization_keypoints, draw_skeleton
 from compute_3d_pose import compute_3d_pose
-from voxel_carving import voxel_carving
+from voxel_carving import voxel_carving_iterative
 
 def heatmaps_to_locs(heatmaps):
     num_images = heatmaps.shape[0]
@@ -154,6 +154,9 @@ count = 0
 while(1):
     ret, frame = cap.read()
     if not ret:
+        #import pdb
+        #pdb.set_trace()
+        print('video ended')
         break
     frame = frame[:, :, ::-1]
     frames = []
@@ -209,7 +212,8 @@ while(1):
     count += 1
     masks = np.array(masks)
     print('voxel_carving frame',count)
-    point_cloud,meta_data = voxel_carving(masks,args.calib_file,count=count,plot_me=True)
+    #point_cloud,meta_data = voxel_carving(masks,args.calib_file,count=count,plot_me=True)
+    point_cloud,meta_data = voxel_carving_iterative(masks,args.calib_file,count=count)
     clouds.append(point_cloud)
     print(meta_data['n_points'])
     volumes.append(meta_data['n_points'])
@@ -249,6 +253,8 @@ np.save(os.path.join(out_dir, 'pred_keypoints_2d.npy'), keypoints_2d)
 compute_3d_pose(out_dir, calib_file=args.calib_file)
 """
 
-np.save('./clouds_test.npy',np.array(clouds))
-np.save('./volume_test.npy',np.array(volumes))
+cloud_file = args.video.split('.')[0] + '_cloud.npy'
+volume_file = args.video.split('.')[0] + '_volume.npy'
+np.save('./clouds_test2.npy',np.array(clouds))
+np.save('./volume_test2.npy',np.array(volumes))
 print('All done!')
