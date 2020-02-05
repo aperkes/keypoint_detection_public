@@ -19,6 +19,7 @@ from models import pose_resnet
 import argparse
 from visualize_keypoints import visualization_keypoints, draw_skeleton
 from compute_3d_pose import compute_3d_pose
+from voxel_keypoints import voxel_keypoints
 
 def heatmaps_to_locs(heatmaps):
     num_images = heatmaps.shape[0]
@@ -211,8 +212,8 @@ while(1):
             import pdb
             pdb.set_trace()
      # I WOULD CALL voxel_keypoints at this point
-     # for i in range(len(frames)):
-     #     keypoints_3d[i] = voxel_keypoints(heatmaps[i], calib_file, ...)
+    for i in range(len(frames)):
+        keypoints_3d[i] = voxel_keypoints(heatmaps[i], args.calib_file)
 
     keypoint_locs = keypoint_locs.cpu().numpy()
     keypoints_2d.append(keypoint_locs)

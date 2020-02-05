@@ -32,7 +32,7 @@ def voxel_keypoints(heatmaps,calib_file,count=0):
     print('lopping through the stuff')
     grid_size = tuple([d // RES for d in DIMS])
     keypoints = np.zeros((heatmaps.shape[0], 3))
-    for kpt in range(len(heatmaps.shape[0])):
+    for kpt in range(heatmaps.shape[0]):
         voxel_grid = np.zeros(grid_size)
         for x in np.arange(DIM_x[0],DIM_x[1],RES):
             for y in np.arange(DIM_y[0],DIM_y[1],RES):
