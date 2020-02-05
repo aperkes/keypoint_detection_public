@@ -143,6 +143,7 @@ if not os.path.exists(img_dir):
 cap = cv2.VideoCapture(os.path.join(args.data_dir, args.video))
 cnt = 0
 keypoints_2d = []
+keypoints_3d= []
 while(1):
     ret, frame = cap.read()
     if not ret:
@@ -212,8 +213,7 @@ while(1):
             import pdb
             pdb.set_trace()
      # I WOULD CALL voxel_keypoints at this point
-    for i in range(len(frames)):
-        keypoints_3d[i] = voxel_keypoints(heatmaps[i], args.calib_file)
+    keypoints_3d.append(voxel_keypoints(heatmaps[i], args.calib_file))
 
     keypoint_locs = keypoint_locs.cpu().numpy()
     keypoints_2d.append(keypoint_locs)

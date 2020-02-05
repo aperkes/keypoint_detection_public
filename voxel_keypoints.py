@@ -32,11 +32,13 @@ def voxel_keypoints(heatmaps,calib_file,count=0):
     print('lopping through the stuff')
     grid_size = tuple([d // RES for d in DIMS])
     keypoints = np.zeros((heatmaps.shape[0], 3))
+    import ipdb
+    ipdb.set_trace()
     for kpt in range(heatmaps.shape[0]):
         voxel_grid = np.zeros(grid_size)
-        for x in np.arange(DIM_x[0],DIM_x[1],RES):
-            for y in np.arange(DIM_y[0],DIM_y[1],RES):
-                for z in range(DIM_z[0],DIM_z[1],RES):
+        for i,x in enumerate(np.arange(DIM_x[0],DIM_x[1],RES)):
+            for j, y in enumerate(np.arange(DIM_y[0],DIM_y[1],RES)):
+                for k, z in enumerate(np.arange(DIM_z[0],DIM_z[1],RES)):
                     checks = np.zeros(4)
                     for c in range(4):
                         heatmaps_c = heatmaps[kpt, c]
@@ -48,11 +50,12 @@ def voxel_keypoints(heatmaps,calib_file,count=0):
                             break
                         elif u >= DIM_u or v >= DIM_v:
                             break
-                        voxel_grid[x,y,z] += heatmaps[u,v]
+                        voxel_grid[i,j,k] += heatmaps_c[u,v]
                         ind = np.argmax(voxel_grid)
-        z = ind // grid_size[2]
-        y = (ind // grid_size[2]) % grid_size[1]
-        x = ind // (grid_size[1] * grid_size[2])
+        # add .5 to place it in the voxel center
+        z = RES * (ind // grid_size[2] + 0.5)
+        y = RES * ((ind // grid_size[2]) % grid_size[1] + 0.5)
+        x = RES * (ind // (grid_size[1] * grid_size[2]) + 0.5)
         keypoints[kpt] = [x,y,z]
     return keypoints
 
