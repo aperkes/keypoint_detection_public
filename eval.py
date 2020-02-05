@@ -7,12 +7,14 @@ import os
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 import torchvision
 from torchvision import transforms as T
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 from torchvision.models.detection.transform import GeneralizedRCNNTransform
 from torchvision.models.detection.mask_rcnn import MaskRCNN
+
 from models import pose_resnet
 import argparse
 from visualize_keypoints import visualization_keypoints, draw_skeleton
@@ -100,7 +102,7 @@ def build_network_transform(minSize=800, maxSize=1333, mean=None, std=None):
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--checkpoint', default='/NAS/home/Projects/bird_keypoints/logs/bird-keyp-new/checkpoints/2019_10_15-15_08_09.pt', help='Path to pretrained checkpoint')
+parser.add_argument('--checkpoint', default='/home/ammon/Documents/Scripts/keypoint_detection/models/keypoint_model_checkpoint.pt', help='Path to pretrained checkpoint')
 parser.add_argument('--data_dir', default=None, required=True, help='Directory containing video')
 parser.add_argument('--video', default=None, required=True, help='Video name')
 parser.add_argument('--visualize', default=False, action='store_true', help='Save frames and visualize keypoints')
@@ -166,6 +168,7 @@ while(1):
     boxes = []
     offset = []
     scales = []
+    orig_scales = []
     frame_num = str(cnt).zfill(6)
     for i in range(len(frames)):
         box = outputs[i]['boxes'][0].cpu().numpy()
@@ -173,18 +176,18 @@ while(1):
         center_y = 0.5*(box[1] + box[3])
         scale = max(box[2] - box[0], box[3] - box[1])
 ###NOTE: Need to get this scaling right to both catch the tale and note fale everything
-        scale = 1.2 * scale
+        scale = int(1.2 * scale)
         #scale = 1.4 * scale
         scales.append(scale)
         min_x = max(center_x - 0.5 * scale, 0)
         min_y = max(center_y - 0.5 * scale, 0)
         max_x = min(center_x + 0.5 * scale, width)
         max_y = min(center_y + 0.5 * scale, height)
+        orig_scales.append((int(max_y) - int(min_y),int(max_x)-int(min_x)))
         box = np.array([min_x, min_y, max_x, max_y]).astype(int)
-        box_keypoints = np.array([ [min_x, min_y], [min_x, max_y], [max_x, min_y], [max_x, max_y] ])
-        box = box.astype(int)
         boxes.append(box)
         offset.append([min_x, min_y])
+        box_keypoints = np.array([ [min_x, min_y], [min_x, max_y], [max_x, min_y], [max_x, max_y] ]).astype(int)
         frames_keypoints.append(keypoint_transform((Image.fromarray(frames_orig[i]), box_keypoints)))
     keypoint_frames = torch.stack(frames_keypoints, dim=0).cuda()
     scale = torch.tensor(scales).cuda().view(-1)
@@ -196,12 +199,17 @@ while(1):
         keypoint_locs[:,:,:-1] += offset[:,None,:]
     heatmaps = np.zeros((len(frames), output.shape[1], 1024, 1024))
     for i in range(len(frames)):
-        heatmaps_orig = F.interpolate(output[i].unsqueeze(0), size=scales[i], mode='bilinear')
+        heatmaps_orig = F.interpolate(output[i].unsqueeze(0).cpu(), size=orig_scales[i], mode='bilinear')
         min_x = boxes[i][0]
         min_y = boxes[i][1]
         max_x = boxes[i][2]
         max_y = boxes[i][3]
-        heatmaps[i, :, min_y:max_y, min_x:max_x] = heatmaps_orig
+        try:
+            heatmaps[i, :, min_y:max_y, min_x:max_x] = heatmaps_orig
+        except:
+            print(np.shape(heatmaps_orig),np.shape(output[i]))
+            import pdb
+            pdb.set_trace()
      # I WOULD CALL voxel_keypoints at this point
      # for i in range(len(frames)):
      #     keypoints_3d[i] = voxel_keypoints(heatmaps[i], calib_file, ...)
