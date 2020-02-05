@@ -69,30 +69,30 @@ def build_transform():
     normalize_transform = T.Normalize(
         mean=[102.9801, 115.9465, 122.7717], std=[1., 1., 1.]
         )
-    
+
     transform = T.Compose([
             T.ToTensor(),
             to_bgr,
             to_255,
             normalize_transform
         ])
-    
+
     return transform
 
 def build_network_transform(minSize=800, maxSize=1333, mean=None, std=None):
     '''
-    torchvision.models.detection apply a resize + normailze transform to input by default, since we already 
+    torchvision.models.detection apply a resize + normailze transform to input by default, since we already
     normalize before hand, it is important to disable it by setting mean/std to 0/1.
-    
-    Note: minSize/maxSize can however be set as wish, but should not be too far from default. 
+
+    Note: minSize/maxSize can however be set as wish, but should not be too far from default.
     '''
     if mean == None:
         mean = (0, 0, 0)
     if std == None:
         std = (1, 1, 1)
-        
+
     transform = GeneralizedRCNNTransform(minSize, maxSize, mean, std)
-    
+
     return transform
 
 ## Try to get it onto GPU:
@@ -181,7 +181,7 @@ while(1):
         max_x = min(center_x + 0.5 * scale, width)
         max_y = min(center_y + 0.5 * scale, height)
         box = np.array([min_x, min_y, max_x, max_y]).astype(int)
-        box_keypoints = np.array([ [min_x, min_y], [min_x, max_y], [max_x, min_y], [max_x, max_y] ]) 
+        box_keypoints = np.array([ [min_x, min_y], [min_x, max_y], [max_x, min_y], [max_x, max_y] ])
         box = box.astype(int)
         boxes.append(box)
         offset.append([min_x, min_y])
@@ -194,6 +194,18 @@ while(1):
         keypoint_locs = torch.from_numpy(heatmaps_to_locs(output)).cuda()
         keypoint_locs[:,:,:-1] = keypoint_locs[:,:,:-1] * 4 * scale[:,None,None] / 256.
         keypoint_locs[:,:,:-1] += offset[:,None,:]
+    heatmaps = np.zeros((len(frames), output.shape[1], 1024, 1024))
+    for i in range(len(frames)):
+        heatmaps_orig = F.interpolate(output[i].unsqueeze(0), size=scales[i], mode='bilinear')
+        min_x = boxes[i][0]
+        min_y = boxes[i][1]
+        max_x = boxes[i][2]
+        max_y = boxes[i][3]
+        heatmaps[i, :, min_y:max_y, min_x:max_x] = heatmaps_orig
+     # I WOULD CALL voxel_keypoints at this point
+     # for i in range(len(frames)):
+     #     keypoints_3d[i] = voxel_keypoints(heatmaps[i], calib_file, ...)
+
     keypoint_locs = keypoint_locs.cpu().numpy()
     keypoints_2d.append(keypoint_locs)
     for i in range(4):
