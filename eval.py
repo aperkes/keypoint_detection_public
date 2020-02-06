@@ -213,7 +213,7 @@ while(1):
             import pdb
             pdb.set_trace()
      # I WOULD CALL voxel_keypoints at this point
-    keypoints_3d.append(voxel_keypoints(heatmaps[i], args.calib_file))
+    keypoints_3d.append(voxel_keypoints(heatmaps, args.calib_file))
 
     keypoint_locs = keypoint_locs.cpu().numpy()
     keypoints_2d.append(keypoint_locs)
