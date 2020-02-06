@@ -51,11 +51,13 @@ def voxel_keypoints(heatmaps,calib_file,count=0):
                         elif u >= DIM_u or v >= DIM_v:
                             break
                         voxel_grid[i,j,k] += heatmaps_c[u,v]
-                        ind = np.argmax(voxel_grid)
+                        #ind = np.argmax(voxel_grid)
         # add .5 to place it in the voxel center
-        z = RES * (ind // grid_size[2] + 0.5)
-        y = RES * ((ind // grid_size[2]) % grid_size[1] + 0.5)
-        x = RES * (ind // (grid_size[1] * grid_size[2]) + 0.5)
+## This line is meaty: get the max voxel, unravel it to get xyz, multiply it to scale to real space and add .5 * RES to place in the center of voxel.
+        (x,y,z) = np.array(np.unravel_index(np.argmax(voxel_grid),voxel_grid.shape)) * RES + .5 * RES
+        #z = RES * (ind // grid_size[2] + 0.5)
+        #y = RES * ((ind // grid_size[2]) % grid_size[1] + 0.5)
+        #x = RES * (ind // (grid_size[1] * grid_size[2]) + 0.5)
         keypoints[kpt] = [x,y,z]
     return keypoints
 

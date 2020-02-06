@@ -206,12 +206,7 @@ while(1):
         min_y = boxes[i][1]
         max_x = boxes[i][2]
         max_y = boxes[i][3]
-        try:
-            heatmaps[i, :, min_y:max_y, min_x:max_x] = heatmaps_orig
-        except:
-            print(np.shape(heatmaps_orig),np.shape(output[i]))
-            import pdb
-            pdb.set_trace()
+        heatmaps[i, :, min_y:max_y, min_x:max_x] = heatmaps_orig
      # I WOULD CALL voxel_keypoints at this point
     keypoints_3d.append(voxel_keypoints(heatmaps, args.calib_file))
 
@@ -233,6 +228,8 @@ while(1):
             cv2.imwrite(img_fname, I[:, :, ::-1])
     cnt += 1
 keypoints_2d = np.stack(keypoints_2d, axis=-1)
+keypoints_3d = np.stack(keypoints_3d, axis=-1)
 np.save(os.path.join(out_dir, 'pred_keypoints_2d.npy'), keypoints_2d)
+np.save(os.path.join(out_dir,'pred_keypoints_3d.npy'),keypoints_3d)
 # args.calib_file file should be the calibration.yaml file that Berndt generated
-compute_3d_pose(out_dir, calib_file=args.calib_file)
+#compute_3d_pose(out_dir, calib_file=args.calib_file)
