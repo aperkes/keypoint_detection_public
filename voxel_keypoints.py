@@ -47,9 +47,9 @@ def voxel_keypoints(heatmaps,calib_file,count=0):
                         reproj = reproj[:2] / reproj[-1]
                         u,v = int(reproj[0]),int(reproj[1])
                         if u < 0 or v < 0:
-                            break
+                            continue
                         elif u >= DIM_u or v >= DIM_v:
-                            break
+                            continue
 ## NOTE: v,u seems right here, but it could obviously be wrong.
                         voxel_grid[i,j,k] += heatmaps_c[v,u]
                         #ind = np.argmax(voxel_grid)
@@ -64,7 +64,7 @@ def voxel_keypoints(heatmaps,calib_file,count=0):
 
 ## rearranged for iteration
 # heatmaps is NUM_KEYPOINTS, 1024, 1024
-def voxel_keypoints2(heatmaps,calib_file,count=0,res=RES,grids=[[[250,250,250] * 20],500]):
+def voxel_keypoints2(heatmaps,calib_file,count=0,res=RES,grids=[[[250,250,250]] * 20,500]):
     old_res = grids[1]
     try:
         print('getting params')
@@ -75,25 +75,26 @@ def voxel_keypoints2(heatmaps,calib_file,count=0,res=RES,grids=[[[250,250,250] *
 ## Figure out resolution and block count:
 ## Is heatmaps *always* 1024? what about bv2, which isn't square?
     dim_v,dim_u = np.shape(heatmaps[0,0])
-    course_dims = np.shape(heatmaps[0,0]) // res 
+    course_dims = np.array(np.shape(heatmaps[0,0])) // res
 # This assumes that the heatmaps are square...
     ## Downsample the heatmap according to resolution: 
     course_maps = []
     ## For every point in space
     print('lopping through the stuff')
-    grid_size = tuple([d // RES for d in DIMS])
     keypoints = np.zeros((heatmaps.shape[1], 3))
     #import ipdb
     #ipdb.set_trace()
     for kpt in range(heatmaps.shape[1]):
-        grid_center = grids[0][kpt]
-        grid_size = tuple([d // res for d in grid])
+        grid_center = np.array(grids[0][kpt])
+        grid_size = tuple(np.array([old_res] * 3) // res)
         for m in heatmaps[:,kpt]:
-            course_maps.append(block_reduce(m,(course_dims),np.max))
+            course_maps.append(block_reduce(m,tuple(course_dims),np.max))
         voxel_grid = np.zeros(grid_size)
-        dim_x = [grid_center - old_res / 2,grid_center + old_res / 2]
-        dim_y = [grid_center - old_res / 2,grid_center + old_res / 2]
-        dim_z = [grid_center - old_res / 2,grid_center + old_res / 2]
+        dim_x = [grid_center[0] - old_res / 2,grid_center[0] + old_res / 2]
+        dim_y = [grid_center[1] - old_res / 2,grid_center[1] + old_res / 2]
+        dim_z = [grid_center[2] - old_res / 2,grid_center[2] + old_res / 2]
+        import pdb
+        pdb.set_trace()
         for i,x in enumerate(np.arange(dim_x[0],dim_x[1],res)):
             for j, y in enumerate(np.arange(dim_y[0],dim_y[1],res)):
                 for k, z in enumerate(np.arange(dim_z[0],dim_z[1],res)):
@@ -106,17 +107,17 @@ def voxel_keypoints2(heatmaps,calib_file,count=0,res=RES,grids=[[[250,250,250] *
                         reproj = reproj[:2] / reproj[-1]
                         u,v = int(reproj[0]),int(reproj[1])
                         u_c = u // course_dims[0]
-                        u_c = v // course_dims[0] 
+                        v_c = v // course_dims[0] 
                         if u < 0 or v < 0:
-                            break
+                            continue
                         elif u >= dim_u or v >= dim_v:
-                            break
+                            continue
 ## There's a chance these indices are reversed
                         voxel_grid[i,j,k] += heatmaps_c[v_c,u_c]
                         #ind = np.argmax(voxel_grid)
         # add .5 to place it in the voxel center
 ## This line is meaty: get the max voxel, unravel it to get xyz, multiply it to scale to real space and add .5 * RES to place in the center of voxel.
-        (x,y,z) = np.array(np.unravel_index(np.argmax(voxel_grid),voxel_grid.shape)) * res + .5 * res
+        (x,y,z) = np.array(np.unravel_index(np.argmax(voxel_grid),voxel_grid.shape)) * res + .5 * res + (grid_center - old_res/ 2)
         keypoints[kpt] = [x,y,z]
     return keypoints, res
 
