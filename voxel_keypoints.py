@@ -50,7 +50,8 @@ def voxel_keypoints(heatmaps,calib_file,count=0):
                             break
                         elif u >= DIM_u or v >= DIM_v:
                             break
-                        voxel_grid[i,j,k] += heatmaps_c[u,v]
+## NOTE: v,u seems right here, but it could obviously be wrong.
+                        voxel_grid[i,j,k] += heatmaps_c[v,u]
                         #ind = np.argmax(voxel_grid)
         # add .5 to place it in the voxel center
 ## This line is meaty: get the max voxel, unravel it to get xyz, multiply it to scale to real space and add .5 * RES to place in the center of voxel.
