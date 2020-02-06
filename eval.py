@@ -183,8 +183,8 @@ while(1):
         scales.append(scale)
         min_x = max(center_x - 0.5 * scale, 0)
         min_y = max(center_y - 0.5 * scale, 0)
-        max_x = min(center_x + 0.5 * scale, width)
-        max_y = min(center_y + 0.5 * scale, height)
+        max_x = min(center_x + 0.5 * scale, width * .5)
+        max_y = min(center_y + 0.5 * scale, height * .5)
         orig_scales.append((int(max_y) - int(min_y),int(max_x)-int(min_x)))
         box = np.array([min_x, min_y, max_x, max_y]).astype(int)
         boxes.append(box)
@@ -206,6 +206,9 @@ while(1):
         min_y = boxes[i][1]
         max_x = boxes[i][2]
         max_y = boxes[i][3]
+        if min_x == 0:
+            import pdb
+            pdb.set_trace()
         heatmaps[i, :, min_y:max_y, min_x:max_x] = heatmaps_orig
      # I WOULD CALL voxel_keypoints at this point
     keypoints_3d.append(voxel_keypoints(heatmaps, args.calib_file))
