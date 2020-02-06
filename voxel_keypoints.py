@@ -31,17 +31,17 @@ def voxel_keypoints(heatmaps,calib_file,count=0):
    ## For every point in space
     print('lopping through the stuff')
     grid_size = tuple([d // RES for d in DIMS])
-    keypoints = np.zeros((heatmaps.shape[0], 3))
+    keypoints = np.zeros((heatmaps.shape[1], 3))
     #import ipdb
     #ipdb.set_trace()
-    for kpt in range(heatmaps.shape[0]):
+    for kpt in range(heatmaps.shape[1]):
         voxel_grid = np.zeros(grid_size)
         for i,x in enumerate(np.arange(DIM_x[0],DIM_x[1],RES)):
             for j, y in enumerate(np.arange(DIM_y[0],DIM_y[1],RES)):
                 for k, z in enumerate(np.arange(DIM_z[0],DIM_z[1],RES)):
                     checks = np.zeros(4)
                     for c in range(4):
-                        heatmaps_c = heatmaps[kpt, c]
+                        heatmaps_c = heatmaps[c,kpt]
                         point_3d = np.array([x,y,z,1000]) ## Need this in homogonous coordinates
                         reproj = np.matmul(P[c],point_3d/point_3d[-1])
                         reproj = reproj[:2] / reproj[-1]
@@ -73,21 +73,21 @@ def voxel_keypoints2(heatmaps,calib_file,count=0,res=RES,grids=[[[250,250,250] *
         return
 ## Figure out resolution and block count:
 ## Is heatmaps *always* 1024? what about bv2, which isn't square?
-    dim_v,dim_u = np.shape(heatmaps[0])
-    course_dims = np.shape(heatmaps[0]) // res 
+    dim_v,dim_u = np.shape(heatmaps[0,0])
+    course_dims = np.shape(heatmaps[0,0]) // res 
 # This assumes that the heatmaps are square...
     ## Downsample the heatmap according to resolution: 
     course_maps = []
     ## For every point in space
     print('lopping through the stuff')
     grid_size = tuple([d // RES for d in DIMS])
-    keypoints = np.zeros((heatmaps.shape[0], 3))
+    keypoints = np.zeros((heatmaps.shape[1], 3))
     #import ipdb
     #ipdb.set_trace()
-    for kpt in range(heatmaps.shape[0]):
+    for kpt in range(heatmaps.shape[1]):
         grid_center = grids[0][kpt]
         grid_size = tuple([d // res for d in grid])
-        for m in heatmaps[kpt]:
+        for m in heatmaps[:,kpt]:
             course_maps.append(block_reduce(m,(course_dims),np.max))
         voxel_grid = np.zeros(grid_size)
         dim_x = [grid_center - old_res / 2,grid_center + old_res / 2]
@@ -111,7 +111,7 @@ def voxel_keypoints2(heatmaps,calib_file,count=0,res=RES,grids=[[[250,250,250] *
                         elif u >= dim_u or v >= dim_v:
                             break
 ## There's a chance these indices are reversed
-                        voxel_grid[i,j,k] += heatmaps_c[u_c,v_c]
+                        voxel_grid[i,j,k] += heatmaps_c[v_c,u_c]
                         #ind = np.argmax(voxel_grid)
         # add .5 to place it in the voxel center
 ## This line is meaty: get the max voxel, unravel it to get xyz, multiply it to scale to real space and add .5 * RES to place in the center of voxel.
