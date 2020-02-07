@@ -18,6 +18,7 @@ import argparse
 from visualize_keypoints import visualization_keypoints, draw_skeleton
 from compute_3d_pose import compute_3d_pose
 from voxel_carving import voxel_carving_iterative
+from voxel_carving import voxel_carving3
 
 def heatmaps_to_locs(heatmaps):
     num_images = heatmaps.shape[0]
@@ -211,12 +212,19 @@ while(1):
         #frames_keypoints.append(keypoint_transform((Image.fromarray(frames_orig[i]), box_keypoints)))
     count += 1
     masks = np.array(masks)
-    print('voxel_carving frame',count)
+    #print('voxel_carving frame',count)
     #point_cloud,meta_data = voxel_carving(masks,args.calib_file,count=count,plot_me=True)
-    point_cloud,meta_data = voxel_carving_iterative(masks,args.calib_file,count=count)
-    clouds.append(point_cloud)
-    print(meta_data['n_points'])
-    volumes.append(meta_data['n_points'])
+    #point_cloud,meta_data = voxel_carving_iterative(masks,args.calib_file,count=count)
+    #clouds.append(point_cloud)
+    #print(meta_data['n_points'])
+    print('new iteration approach:')
+    round1 = voxel_carving3(masks,args.calib_file,count=count,res=100)
+    round2 = voxel_carving3(masks,args.calib_file,count=count,res=20,grids=round1)
+    round3 = voxel_carving3(masks,args.calib_file,count=count,res=5,grids=round2)
+    print('n-points:',len(round3[0]))
+    volumes.append(len(round3[0]))
+    clouds.append(round3[0])
+    #volumes.append(meta_data['n_points'])
 
     #save_name = './masks/mask_' + str(count) + '.npy'
 
@@ -255,6 +263,6 @@ compute_3d_pose(out_dir, calib_file=args.calib_file)
 
 cloud_file = args.video.split('.')[0] + '_cloud.npy'
 volume_file = args.video.split('.')[0] + '_volume.npy'
-np.save('./clouds_test2.npy',np.array(clouds))
-np.save('./volume_test2.npy',np.array(volumes))
+np.save('./clouds_test3.npy',np.array(clouds))
+np.save('./volume_test3.npy',np.array(volumes))
 print('All done!')
