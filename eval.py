@@ -22,6 +22,7 @@ from compute_3d_pose import compute_3d_pose
 from voxel_keypoints import voxel_keypoints3
 from voxel_keypoints import voxel_keypoints2
 from voxel_keypoints import voxel_keypoints
+from voxel_keypoints import voxel_keypoints4
 
 def heatmaps_to_locs(heatmaps):
     num_images = heatmaps.shape[0]
@@ -147,6 +148,7 @@ cnt = 0
 keypoints_2d = []
 keypoints_3d= []
 while(1):
+    print('processing frame:',cnt)
     ret, frame = cap.read()
     if not ret:
         break
@@ -209,12 +211,14 @@ while(1):
         max_x = boxes[i][2]
         max_y = boxes[i][3]
         heatmaps[i, :, min_y:max_y, min_x:max_x] = heatmaps_orig
-    round1 = voxel_keypoints2(heatmaps,args.calib_file,res=100)
-    round2 = voxel_keypoints2(heatmaps,args.calib_file,res=20,grids=round1)
-    round3 = voxel_keypoints2(heatmaps,args.calib_file,res=5,grids=round2)
-    points,_ =  voxel_keypoints2(heatmaps,args.calib_file,res=1,grids=round3)
+    print('starting voxel carving')
+    round1 = voxel_keypoints3(heatmaps,args.calib_file,res=100)
+    round2 = voxel_keypoints3(heatmaps,args.calib_file,res=20,grids=round1)
+    round3 = voxel_keypoints3(heatmaps,args.calib_file,res=5,grids=round2)
+    points,_ =  voxel_keypoints3(heatmaps,args.calib_file,res=1,grids=round3)
+    #keypoints_3d.append(round3[0])
     keypoints_3d.append(points)
-    #keypoints_3d.append(voxel_keypoints(heatmaps, args.calib_file))
+    #keypoints_3d.append(voxel_keypoints4(heatmaps, args.calib_file))
     keypoint_locs = keypoint_locs.cpu().numpy()
     keypoints_2d.append(keypoint_locs)
     for i in range(4):

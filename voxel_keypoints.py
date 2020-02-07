@@ -21,6 +21,9 @@ DIM_v = 1024
 MASK_THRESH = .1
 
 # heatmaps is NUM_KEYPOINTS, 1024, 1024
+## This is the original method, it doesn't do anything to blur the heatmap
+## So you could easily miss the true maximum and find some local spike
+
 def voxel_keypoints(heatmaps,calib_file,count=0):
     try:
         print('getting params')
@@ -46,19 +49,22 @@ def voxel_keypoints(heatmaps,calib_file,count=0):
                         reproj = np.matmul(P[c],point_3d/point_3d[-1])
                         reproj = reproj[:2] / reproj[-1]
                         u,v = int(reproj[0]),int(reproj[1])
+                        ## This limits it to places where you can see from all 4 cameras
                         if u < 0 or v < 0:
-                            continue
+                            break
                         elif u >= DIM_u or v >= DIM_v:
-                            continue
+                            break
 ## NOTE: v,u seems right here, but it could obviously be wrong.
                         voxel_grid[i,j,k] += heatmaps_c[v,u]
-                        #ind = np.argmax(voxel_grid)
         # add .5 to place it in the voxel center
 ## This line is meaty: get the max voxel, unravel it to get xyz, multiply it to scale to real space and add .5 * RES to place in the center of voxel.
-        (x,y,z) = np.array(np.unravel_index(np.argmax(voxel_grid),voxel_grid.shape)) * RES + .5 * RES
-        #z = RES * (ind // grid_size[2] + 0.5)
-        #y = RES * ((ind // grid_size[2]) % grid_size[1] + 0.5)
-        #x = RES * (ind // (grid_size[1] * grid_size[2]) + 0.5)
+
+        ind = np.argmax(voxel_grid)
+        ijk = np.array(np.unravel_index(np.argmax(voxel_grid),voxel_grid.shape))
+        (x,y,z) = ijk * RES + .5 * RES 
+        #z0 = RES * (ind // grid_size[2] + 0.5)
+        #y0 = RES * ((ind // grid_size[2]) % grid_size[1] + 0.5)
+        #x0 = RES * (ind // (grid_size[1] * grid_size[2]) + 0.5)
         keypoints[kpt] = [x,y,z]
     return keypoints
 
@@ -106,9 +112,9 @@ def voxel_keypoints2(heatmaps,calib_file,count=0,res=RES,grids=[[[250,250,250]] 
                         u_c = u // course_dims[0]
                         v_c = v // course_dims[0] 
                         if u < 0 or v < 0:
-                            continue
+                            break
                         elif u >= dim_u or v >= dim_v:
-                            continue
+                            break
 ## There's a chance these indices are reversed
                         voxel_grid[i,j,k] += heatmap_c[v_c,u_c]
                         #ind = np.argmax(voxel_grid)
@@ -164,7 +170,7 @@ def voxel_keypoints3(heatmaps,calib_file,count=0,res=RES,grids=[[[250,250,250]] 
                 reproj_points.append(reproj_points_c.astype(int))
             reproj_dict[tuple(grid_center)] = reproj_points
         heatmaps_c = [block_reduce(heatmaps[c,kpt],tuple(course_dims),np.max) for c in range(4)]
-        voxel_grid = np.zeros(len(all_points))
+        voxel_list = np.zeros(len(all_points))
         for p in range(len(all_points)):
             x,y,z = all_points[p,:3]
             for c in range(4):
@@ -175,18 +181,68 @@ def voxel_keypoints3(heatmaps,calib_file,count=0,res=RES,grids=[[[250,250,250]] 
                 u_c = u // course_dims[0]
                 v_c = v // course_dims[0] 
                 if u < 0 or v < 0:
-                    continue
+                    break
                 elif u >= dim_u or v >= dim_v:
-                    continue
+                    break
 ## There's a chance these indices are reversed
-                voxel_grid[p] += heatmap_c[v_c,u_c]
+                voxel_list[p] += heatmap_c[v_c,u_c]
                 #ind = np.argmax(voxel_grid)
         # add .5 to place it in the voxel center
 ## This line is meaty: get the max voxel, unravel it to get xyz, multiply it to scale to real space and add .5 * RES to place in the center of voxel.
-        (x,y,z) = all_points[np.argmax(voxel_grid)]
+        (x,y,z) = all_points[np.argmax(voxel_list)] + res/2
         #(x,y,z) = np.array(np.unravel_index(np.argmax(voxel_grid),voxel_grid.shape)) * res + .5 * res + (grid_center - old_res/ 2)
         keypoints[kpt] = [x,y,z]
-    #pdb.set_trace()
     return keypoints, res
+
+## This is a slightly faster approach than the original method
+## Still flawed
+def voxel_keypoints4(heatmaps,calib_file,count=0):
+    try:
+        print('getting params')
+        _,_,P,_ = get_camera_params(calib_file)
+    except:
+        print('Calibration file does not exist')
+        return
+   ## For every point in space
+    print('lopping through the stuff')
+    grid_size = tuple([d // RES for d in DIMS])
+    keypoints = np.zeros((heatmaps.shape[1], 3))
+    #import ipdb
+    #ipdb.set_trace()
+    
+    all_points = np.array(list(itertools.product(np.arange(DIM_x[0],DIM_x[1],RES),\
+     np.arange(DIM_y[0],DIM_y[1],RES),np.arange(DIM_z[0],DIM_z[1],RES))))
+    hom_points = np.ones([len(all_points),4])
+    hom_points[:,:3] = all_points / 1000
+    reproj_points = []
+    for c in range(4):
+        reproj_points_c = np.dot(P[c],np.transpose(hom_points))
+        reproj_points_c = reproj_points_c / reproj_points_c[2,:]
+        #reproj_points_c = np.reshape(reproj_points_c,grid_size)
+        reproj_points.append(reproj_points_c.astype(int))
+    for kpt in range(heatmaps.shape[1]):
+        #voxel_grid = np.zeros(grid_size)
+        voxel_list = np.zeros(len(all_points))
+        for p in range(len(all_points)):
+            x,y,z = all_points[p,:3]
+            for c in range(4):
+                heatmaps_c = heatmaps[c,kpt]
+                #point_3d = np.array([x,y,z,1000]) ## Need this in homogonous coordinates
+                point_3d = np.array([x,y,z,1000])
+                #reproj = np.matmul(P[c],point_3d/point_3d[-1])
+                #reproj = reproj[:2] / reproj[-1]
+                u,v = reproj_points[c][:2,p]
+                if u < 0 or v < 0:
+                    break
+                elif u >= DIM_u or v >= DIM_v:
+                    break
+## NOTE: v,u seems right here, but it could obviously be wrong.
+                voxel_list[p] += heatmaps_c[v,u]
+                #ind = np.argmax(voxel_grid)
+        # add .5 to place it in the voxel center
+## This line is meaty: get the max voxel, unravel it to get xyz, multiply it to scale to real space and add .5 * RES to place in the center of voxel.
+        (x,y,z) = all_points[np.argmax(voxel_list)]
+        keypoints[kpt] = [x,y,z]
+    return keypoints
 
 
