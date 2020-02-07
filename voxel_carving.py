@@ -8,6 +8,7 @@ from skimage.measure import block_reduce
 from compute_3d_pose import get_camera_params
 import pdb
 import random
+import itertools
 
 ## All I need is calibration and the masks
 
@@ -127,6 +128,7 @@ def voxel_carving_iterative(masks,calib_file,count=0,plot_me=False):
 ## Down sample the masks, this appears to be a good method
     for mask in masks:
         course_masks.append(block_reduce(mask,(COURSE_mask,COURSE_mask),np.max))
+    #print(np.shape(course_masks))
     for x in np.arange(DIM_x[0] + COURSE / 2,DIM_x[1],COURSE):    
         for y in np.arange(DIM_y[0] + COURSE / 2,DIM_y[1],COURSE):
             for z in np.arange(DIM_z[0] + COURSE / 2,DIM_z[1],COURSE):
@@ -220,6 +222,72 @@ def voxel_carving_iterative(masks,calib_file,count=0,plot_me=False):
         plot_cloud(point_cloud,count)
     return point_cloud, meta_data
 
+def voxel_carving3(masks,calib_file,count=0,res=RES,grids = [[[250,250,250]],250]):
+    if len(grids[0]) == 0:
+        return ([],res)
+    old_res = grids[1]
+    try:
+        print('getting_params')
+        _,_,P,_ = get_camera_params(calib_file)
+    except:
+        print('Calibration file does not exist')
+        return
+
+    dim_v,dim_u = np.shape(masks[0])
+    n_blocks = round(DIMS[0] // res)
+    course_dims = np.array(np.shape(masks[0])) / (n_blocks)
+    #course_dims = [n_blocks,n_blocks]
+    
+    all_points = []
+    for grid in grids[0]:
+        x0,x1 = round_by(grid[0] - old_res,res) + res/2,round_by(grid[0] + old_res + res,res)
+        y0,y1 = round_by(grid[1] - old_res,res) + res/2,round_by(grid[1] + old_res + res,res)
+        z0,z1 = round_by(grid[2] - old_res,res) + res/2,round_by(grid[2] + old_res + res,res)
+        xs = np.arange(x0,x1,res)
+        ys = np.arange(y0,y1,res)
+        zs = np.arange(z0,z1,res)
+        all_points.extend(list(itertools.product(xs,ys,zs)))
+    all_points = np.array(all_points)
+    #all_points = np.unique(all_points,axis=0) 
+    hom_points = np.ones([len(all_points),4])
+    hom_points[:,:3] = all_points / 1000
+    
+    reproj_points = []
+    course_masks = []
+    for c in range(4):
+        course_masks.append(block_reduce(masks[c],tuple(course_dims.astype(int)),np.max))
+        reproj_points_c = np.dot(P[c],np.transpose(hom_points))
+        reproj_points_c = reproj_points_c / reproj_points_c[2,:]
+        reproj_points.append(reproj_points_c.astype(int))
+    voxel_list = []
+    checked_points = {}
+    #pdb.set_trace()
+    for p in range(len(all_points)):
+        checks = 0
+        x,y,z = all_points[p]
+        if (x,y,z) in checked_points:
+            continue
+        else:
+            checked_points[(x,y,z)] = 1
+        for c in range(4):
+            mask = course_masks[c]
+            u,v = reproj_points[c][:2,p]
+            if u < 0 or v < 0:
+                break
+            elif u >= dim_u or v >= dim_v:
+                break
+            #pdb.set_trace()
+            u_c = int(u / course_dims[0])
+            v_c = int(v / course_dims[1])
+            if mask[v_c,u_c] >= MASK_THRESH:
+                checks += 1
+                if checks == 4:
+                    #pdb.set_trace()
+                    voxel_list.append(all_points[p])
+                continue
+            else:
+                break
+    return (voxel_list,res)
 
 if __name__ == "__main__":
     print('Doing stuff')
@@ -230,3 +298,7 @@ if __name__ == "__main__":
     #print('old points:',len(point_cloud))
     point_cloud,meta_data = voxel_carving_iterative(masks,calib_file)
     print('N-points:',meta_data['n_points'])
+    round1 = voxel_carving3(masks,calib_file,res=62.5)
+    round2 = voxel_carving3(masks,calib_file,res=5,grids=round1)
+    #round3 = voxel_carving3(masks,calib_file,res=5,grids=round2)
+    print('N-points:',len(round2[0]))
