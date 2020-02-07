@@ -91,8 +91,6 @@ def voxel_keypoints2(heatmaps,calib_file,count=0,res=RES,grids=[[[250,250,250]] 
         dim_x = [grid_center[0] - old_res / 2,grid_center[0] + old_res / 2]
         dim_y = [grid_center[1] - old_res / 2,grid_center[1] + old_res / 2]
         dim_z = [grid_center[2] - old_res / 2,grid_center[2] + old_res / 2]
-        import pdb
-        pdb.set_trace()
         heatmaps_c = [block_reduce(heatmaps[c,kpt],tuple(course_dims),np.max) for c in range(4)]
         for i,x in enumerate(np.arange(dim_x[0],dim_x[1],res)):
             for j, y in enumerate(np.arange(dim_y[0],dim_y[1],res)):
@@ -101,7 +99,6 @@ def voxel_keypoints2(heatmaps,calib_file,count=0,res=RES,grids=[[[250,250,250]] 
                     for c in range(4):
                         heatmap_c = heatmaps_c[c]
                         #heatmaps_c = heatmaps[kpt, c]
-                        pdb.set_trace()
                         point_3d = np.array([x,y,z,1000]) ## Need this in homogonous coordinates
                         reproj = np.matmul(P[c],point_3d/point_3d[-1])
                         reproj = reproj[:2] / reproj[-1]
@@ -147,8 +144,6 @@ def voxel_keypoints3(heatmaps,calib_file,count=0,res=RES,grids=[[[250,250,250]] 
     reproj_dict = {}
     for kpt in range(heatmaps.shape[1]):
         grid_center = np.array(grids[0][kpt])
-        import pdb
-        #pdb.set_trace()
         grid_size = tuple(np.array([old_res] * 3) // res)
         dim_x = [grid_center[0] - old_res / 2,grid_center[0] + old_res / 2]
         dim_y = [grid_center[1] - old_res / 2,grid_center[1] + old_res / 2]
@@ -168,8 +163,6 @@ def voxel_keypoints3(heatmaps,calib_file,count=0,res=RES,grids=[[[250,250,250]] 
                 reproj_points_c = reproj_points_c / reproj_points_c[2,:]
                 reproj_points.append(reproj_points_c.astype(int))
             reproj_dict[tuple(grid_center)] = reproj_points
-        import pdb
-        #pdb.set_trace()
         heatmaps_c = [block_reduce(heatmaps[c,kpt],tuple(course_dims),np.max) for c in range(4)]
         voxel_grid = np.zeros(len(all_points))
         for p in range(len(all_points)):
