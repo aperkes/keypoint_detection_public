@@ -5,6 +5,7 @@ from matplotlib import pyplot as plt
 from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D
 from skimage.measure import block_reduce
+from sklearn.decomposition import PCA
 from compute_3d_pose import get_camera_params
 import pdb
 import random
@@ -25,7 +26,6 @@ MASK_THRESH = .1
 def voxel_carving(masks,calib_file,count=0,plot_me=False):
     dim_v,dim_u = np.shape(masks[0])
     try:
-        print('getting params')
         _,_,P,_ = get_camera_params(calib_file)
     except:
         print('Calibration file does not exist')
@@ -75,7 +75,7 @@ def voxel_carving(masks,calib_file,count=0,plot_me=False):
     return point_cloud, meta_data
 
 ## Plots point cloud and saves it as an image (with id 'n')
-def plot_cloud(point_cloud,n,meta_data = None):
+def plot_cloud(point_cloud,n,meta_data = None,out_dir='./'):
     if len(point_cloud) > 0:
         print('plotting things')
         color_map = cm.get_cmap('viridis')
@@ -91,7 +91,7 @@ def plot_cloud(point_cloud,n,meta_data = None):
             height_ratio = (point_cloud[p,2] - z_min) / z_range
             #ax.scatter(sub_points[p,0],sub_points[p,1],sub_points[p,2],alpha=.5)
             ax.scatter(point_cloud[p,0],point_cloud[p,1],point_cloud[p,2],alpha=.3,color=color_map(height_ratio))
-        file_name = './clouds/frame_' + '%04d'%n + '.png'
+        file_name = out_dir + 'clouds/frame_' + '%04d'%n + '.png'
         ax.set_xlim([0,400])
         ax.set_ylim([0,400])
         ax.set_zlim([0,400])
@@ -222,12 +222,12 @@ def voxel_carving_iterative(masks,calib_file,count=0,plot_me=False):
         plot_cloud(point_cloud,count)
     return point_cloud, meta_data
 
-def voxel_carving3(masks,calib_file,count=0,res=RES,grids = [[[250,250,250]],250]):
+## Outputs pointcloud, can also store pca and/or plot of point cloud
+def voxel_carving3(masks,calib_file,count=0,res=RES,grids = [[[250,250,250]],250],plot_me=False,pca=False,out_dir = './'):
     if len(grids[0]) == 0:
         return ([],res)
     old_res = grids[1]
     try:
-        print('getting_params')
         _,_,P,_ = get_camera_params(calib_file)
     except:
         print('Calibration file does not exist')
@@ -287,6 +287,18 @@ def voxel_carving3(masks,calib_file,count=0,res=RES,grids = [[[250,250,250]],250
                 continue
             else:
                 break
+    voxel_list = np.array(voxel_list)
+    if pca:
+        pca_cloud = PCA()
+        pca_cloud.fit(voxel_list)
+        vector1,vector2 = pca_cloud.components_[0:2]
+        pca_file = out_dir + 'pca.txt'
+        with open(pca_file,'a') as f:
+            out_string = str(count) + ',' +  str(vector1)
+            f.write(str(vector1.flatten()).replace('[','').replace(' ',',').replace(']',''))
+## Append it to the file
+    if plot_me:
+        plot_cloud(voxel_list,count,out_dir)
     return (voxel_list,res)
 
 if __name__ == "__main__":

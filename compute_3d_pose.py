@@ -7,7 +7,8 @@ from tqdm import tqdm
 def get_camera_params(filename, ncams=4):
     with open(filename) as stream:
         try:
-            data = yaml.load(stream)
+            #data = yaml.load(stream)
+            data = yaml.load(stream,Loader=yaml.FullLoader)
         except yaml.YAMLError as exc:
             print(exc)
 

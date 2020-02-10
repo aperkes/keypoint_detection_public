@@ -99,7 +99,6 @@ def build_network_transform(minSize=800, maxSize=1333, mean=None, std=None):
 
 ## Try to get it onto GPU:
 
-print('Load arguments')
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
 parser = argparse.ArgumentParser()
@@ -107,11 +106,10 @@ parser.add_argument('--checkpoint', default='/home/ammon/Documents/Scripts/keypo
 parser.add_argument('--data_dir', default='/data/birds/postures/birdview-2019/', required=False, help='Directory containing video')
 parser.add_argument('--video', default='2019-06-08-13-16-12_BDY.wav.mp4', required=False, help='Video name')
 parser.add_argument('--visualize', default=False, action='store_true', help='Save frames and visualize keypoints')
+parser.add_argument('--pca',default=False,action='store_true',help = 'Save 1st and 2nd principal components')
 parser.add_argument('--calib_file', default='/data/birds/postures/calibrations/birdview/2019-06-08-13-16-12_BDY/calibration/calibration.yaml', help='Camera calibration')
-
 args = parser.parse_args()
 
-print('setting up networks')
 transform = build_transform()
 network_transform = build_network_transform()
 
@@ -123,6 +121,8 @@ model.eval()
 #model.load_state_dict(torch.load('/NAS/home/MaskRCNN_Torch_Bird/MaskRCNN_Torch_Bird/model_5.pth'))
 model.load_state_dict(torch.load('/home/ammon/Documents/Scripts/keypoint_detection/MaskRCNN_Torch_Bird/model_5.pth'))
 
+out_dir = os.path.join(args.data_dir, args.video.split('.')[0])
+print('storing data to',out_dir)
 """#Comment out these lines if you are doing keypoints
 model_keypoints = pose_resnet(resnet_layers=50, num_classes=20).cuda()
 model_keypoints.to(device)
@@ -150,14 +150,10 @@ cnt = 0
 keypoints_2d = []
 volumes = []
 clouds = []
-print('loading video')
 count = 0
 while(1):
     ret, frame = cap.read()
     if not ret:
-        #import pdb
-        #pdb.set_trace()
-        print('video ended')
         break
     frame = frame[:, :, ::-1]
     frames = []
@@ -185,7 +181,6 @@ while(1):
     scales = []
     masks = []
     frame_num = str(cnt).zfill(6)
-    print('getting masks')
     for i in range(len(frames)):
         box = outputs[i]['boxes'][0].cpu().numpy()
 ## I'm not sure why I need the extra 0 here, maybe for ultiple instances of the same thing?
@@ -215,16 +210,17 @@ while(1):
     #print('voxel_carving frame',count)
     #point_cloud,meta_data = voxel_carving(masks,args.calib_file,count=count,plot_me=True)
     #point_cloud,meta_data = voxel_carving_iterative(masks,args.calib_file,count=count)
-    #clouds.append(point_cloud)
+    #clouds.append(np.array(point_cloud))
+    #volumes.append(meta_data['n_points'])
     #print(meta_data['n_points'])
-    print('new iteration approach:')
+    #print('new iteration approach:')
     round1 = voxel_carving3(masks,args.calib_file,count=count,res=100)
     round2 = voxel_carving3(masks,args.calib_file,count=count,res=20,grids=round1)
-    round3 = voxel_carving3(masks,args.calib_file,count=count,res=5,grids=round2)
-    print('n-points:',len(round3[0]))
+    round3 = voxel_carving3(masks,args.calib_file,count=count,res=5,grids=round2,pca=args.pca,plot_me=args.visualize,out_dir=out_dir)
+    print(args.video,'Frame:',count)
+    #print('n-points:',len(round3[0]))
     volumes.append(len(round3[0]))
     clouds.append(round3[0])
-    #volumes.append(meta_data['n_points'])
 
     #save_name = './masks/mask_' + str(count) + '.npy'
 
@@ -263,6 +259,6 @@ compute_3d_pose(out_dir, calib_file=args.calib_file)
 
 cloud_file = args.video.split('.')[0] + '_cloud.npy'
 volume_file = args.video.split('.')[0] + '_volume.npy'
-np.save('./clouds_test3.npy',np.array(clouds))
-np.save('./volume_test3.npy',np.array(volumes))
+#np.save(out_dir + cloud_fie,np.array(clouds))
+np.save(out_dir + volume_file,np.array(volumes))
 print('All done!')
