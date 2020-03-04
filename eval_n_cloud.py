@@ -123,7 +123,7 @@ model.load_state_dict(torch.load('/home/ammon/Documents/Scripts/keypoint_detecti
 
 out_dir = os.path.join(args.data_dir, args.video.split('.')[0])
 print('storing data to',out_dir)
-"""#Comment out these lines if you are doing keypoints
+#"""#Comment out these lines if you are doing keypoints
 model_keypoints = pose_resnet(resnet_layers=50, num_classes=20).cuda()
 model_keypoints.to(device)
 
@@ -143,7 +143,7 @@ out_dir = os.path.join(args.data_dir, args.video.split('.')[0])
 img_dir = os.path.join(out_dir, 'images')
 if not os.path.exists(img_dir):
     os.makedirs(img_dir)
-"""# Uncomment
+#"""# Uncomment
 
 cap = cv2.VideoCapture(os.path.join(args.data_dir, args.video))
 cnt = 0
@@ -192,8 +192,8 @@ while(1):
 ###NOTE: Need to get this scaling right to both catch the tale and note fale everything
 ###NOTE: THIS IS WHERE I do voxel carving!! But I need to get the masks, not the boxes. outputs[i]['masks'][0]
 ## I think I can boot it up as a thread in python and it won't even slow me down. 
-        scale = 1.2 * scale
-        #scale = 1.4 * scale
+        #scale = 1.2 * scale
+        scale = 1.4 * scale
         scales.append(scale)
         min_x = max(center_x - 0.5 * scale, 0)
         min_y = max(center_y - 0.5 * scale, 0)
@@ -204,9 +204,10 @@ while(1):
         box = box.astype(int)
         boxes.append(box)
         offset.append([min_x, min_y])
-        #frames_keypoints.append(keypoint_transform((Image.fromarray(frames_orig[i]), box_keypoints)))
+        frames_keypoints.append(keypoint_transform((Image.fromarray(frames_orig[i]), box_keypoints)))
     count += 1
     masks = np.array(masks)
+    #np.save(out_dir + '/mask_' + str(count),masks)
     #print('voxel_carving frame',count)
     #point_cloud,meta_data = voxel_carving(masks,args.calib_file,count=count,plot_me=True)
     #point_cloud,meta_data = voxel_carving_iterative(masks,args.calib_file,count=count)
@@ -216,15 +217,19 @@ while(1):
     #print('new iteration approach:')
     round1 = voxel_carving3(masks,args.calib_file,count=count,res=100)
     round2 = voxel_carving3(masks,args.calib_file,count=count,res=20,grids=round1)
-    round3 = voxel_carving3(masks,args.calib_file,count=count,res=5,grids=round2,pca=args.pca,plot_me=args.visualize,out_dir=out_dir)
+    #round3 = voxel_carving3(masks,args.calib_file,count=count,res=5,grids=round2,)
+    round4 = voxel_carving3(masks,args.calib_file,count=count,res=5,grids=round2,pca=args.pca,plot_me=args.visualize,out_dir=out_dir)
     print(args.video,'Frame:',count)
     #print('n-points:',len(round3[0]))
-    volumes.append(len(round3[0]))
-    clouds.append(round3[0])
+    volumes.append(len(round4[0]))
+    clouds.append(round4[0])
 
-    #save_name = './masks/mask_' + str(count) + '.npy'
+    mask_name = out_dir + '/masks/masks_' + str(count) + '.npy'
+    box_name = out_dir + '/masks/box_' + str(count) + '.npy'
+    np.save(mask_name,masks)
+    np.save(box_name,np.array(boxes))
 
-    """
+#    """Comment these out too if you're not doing keypoint
     keypoint_frames = torch.stack(frames_keypoints, dim=0).cuda()
     scale = torch.tensor(scales).cuda().view(-1)
     offset = torch.tensor(offset).cuda().view(-1, 2)
@@ -255,10 +260,10 @@ keypoints_2d = np.stack(keypoints_2d, axis=-1)
 np.save(os.path.join(out_dir, 'pred_keypoints_2d.npy'), keypoints_2d)
 # args.calib_file file should be the calibration.yaml file that Berndt generated
 compute_3d_pose(out_dir, calib_file=args.calib_file)
-"""
+#"""
 
 cloud_file = args.video.split('.')[0] + '_cloud.npy'
 volume_file = args.video.split('.')[0] + '_volume.npy'
-#np.save(out_dir + cloud_fie,np.array(clouds))
-np.save(out_dir + volume_file,np.array(volumes))
+np.save(out_dir + '/' + cloud_file,np.array(clouds))
+np.save(out_dir + '/' + volume_file,np.array(volumes))
 print('All done!')

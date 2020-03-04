@@ -14,6 +14,8 @@ from torchvision import transforms as T
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 from torchvision.models.detection.transform import GeneralizedRCNNTransform
 from torchvision.models.detection.mask_rcnn import MaskRCNN
+from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 
 from models import pose_resnet
 import argparse
@@ -23,6 +25,26 @@ from voxel_keypoints import voxel_keypoints3
 from voxel_keypoints import voxel_keypoints2
 from voxel_keypoints import voxel_keypoints
 from voxel_keypoints import voxel_keypoints4
+
+## Helper function to build model
+def get_model_instance_segmentation(num_classes):
+# load a model pre-trained pre-trained on COCO
+    model = torchvision.models.detection.maskrcnn_resnet50_fpn(pretrained=True)
+
+# replace the classifier with a new one, that has
+# num_classes which is user-defined
+    num_classes = 2  # 1 class (person) + background
+# get number of input features for the classifier
+    in_features = model.roi_heads.box_predictor.cls_score.in_features
+# replace the pre-trained head with a new one
+    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+
+# Get number of input features for mask classifier
+    in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
+    hidden_layer = 256 ##don't quite understand that...
+# and replace the mask predictor with a new one
+    model.roi_heads.mask_predictor = MaskRCNNPredictor(in_features_mask,hidden_layer,num_classes)
+    return model
 
 def heatmaps_to_locs(heatmaps):
     num_images = heatmaps.shape[0]
@@ -101,6 +123,10 @@ def build_network_transform(minSize=800, maxSize=1333, mean=None, std=None):
 
     return transform
 
+def build_mask_transform():
+    transform = T.Compose([T.ToTensor()])
+    return transform
+
 ## Try to get it onto GPU:
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -115,8 +141,10 @@ parser.add_argument('--calib_file', default=None, help='Camera calibration')
 args = parser.parse_args()
 
 transform = build_transform()
-network_transform = build_network_transform()
+#network_transform = build_network_transform()
+network_transform = build_mask_transform()
 
+"""
 backbone = resnet_fpn_backbone(backbone_name='resnet101', pretrained=False)
 model = MaskRCNN(backbone, num_classes=2)
 model.to(device)
@@ -124,6 +152,13 @@ model.transform = network_transform
 model.eval()
 #model.load_state_dict(torch.load('/NAS/home/MaskRCNN_Torch_Bird/MaskRCNN_Torch_Bird/model_5.pth'))
 model.load_state_dict(torch.load('/home/ammon/Documents/Scripts/keypoint_detection/MaskRCNN_Torch_Bird/model_5.pth'))
+"""
+model_save = '/home/ammon/Documents/Scripts/bird_segment/model_9.pt'
+model = get_model_instance_segmentation(2)
+model.to(device)
+#model.transform = network_transform
+model.eval()
+model.load_state_dict(torch.load(model_save))
 
 model_keypoints = pose_resnet(resnet_layers=50, num_classes=20).cuda()
 model_keypoints.to(device)
@@ -157,10 +192,10 @@ while(1):
     frames_orig = []
     frames_keypoints = []
     height, width = frame.shape[:2]
-    frames.append(transform(Image.fromarray(frame[:height//2, :width//2, :]).convert('RGB')))
-    frames.append(transform(Image.fromarray(frame[:height//2, width//2:, :]).convert('RGB')))
-    frames.append(transform(Image.fromarray(frame[height//2:, :width//2, :]).convert('RGB')))
-    frames.append(transform(Image.fromarray(frame[height//2:, width//2:, :]).convert('RGB')))
+    frames.append(network_transform(Image.fromarray(frame[:height//2, :width//2, :]).convert('RGB')))
+    frames.append(network_transform(Image.fromarray(frame[:height//2, width//2:, :]).convert('RGB')))
+    frames.append(network_transform(Image.fromarray(frame[height//2:, :width//2, :]).convert('RGB')))
+    frames.append(network_transform(Image.fromarray(frame[height//2:, width//2:, :]).convert('RGB')))
     frames_orig.append(frame[:height//2, :width//2, :])
     frames_orig.append(frame[:height//2, width//2:, :])
     frames_orig.append(frame[height//2:, :width//2, :])
@@ -198,6 +233,7 @@ while(1):
     keypoint_frames = torch.stack(frames_keypoints, dim=0).cuda()
     scale = torch.tensor(scales).cuda().view(-1)
     offset = torch.tensor(offset).cuda().view(-1, 2)
+
     with torch.no_grad():
         output = model_keypoints(keypoint_frames)[0]
         keypoint_locs = torch.from_numpy(heatmaps_to_locs(output)).cuda()
