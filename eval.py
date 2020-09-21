@@ -46,6 +46,10 @@ def get_model_instance_segmentation(num_classes):
     model.roi_heads.mask_predictor = MaskRCNNPredictor(in_features_mask,hidden_layer,num_classes)
     return model
 
+def get_hrn_instance_segmentation(num_classes):
+    model = 0
+    return model
+
 def heatmaps_to_locs(heatmaps):
     num_images = heatmaps.shape[0]
     num_keypoints = heatmaps.shape[1]

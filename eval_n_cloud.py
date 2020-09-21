@@ -13,12 +13,35 @@ from torchvision import transforms as T
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 from torchvision.models.detection.transform import GeneralizedRCNNTransform
 from torchvision.models.detection.mask_rcnn import MaskRCNN
+from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
+
 from models import pose_resnet
 import argparse
 from visualize_keypoints import visualization_keypoints, draw_skeleton
 from compute_3d_pose import compute_3d_pose
 from voxel_carving import voxel_carving_iterative
 from voxel_carving import voxel_carving3
+
+## Helper function to build model
+def get_model_instance_segmentation(num_classes):
+# load a model pre-trained pre-trained on COCO
+    model = torchvision.models.detection.maskrcnn_resnet50_fpn(pretrained=True)
+
+# replace the classifier with a new one, that has
+# num_classes which is user-defined
+    num_classes = 2  # 1 class (person) + background
+# get number of input features for the classifier
+    in_features = model.roi_heads.box_predictor.cls_score.in_features
+# replace the pre-trained head with a new one
+    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+
+# Get number of input features for mask classifier
+    in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
+    hidden_layer = 256 ##don't quite understand that...
+# and replace the mask predictor with a new one
+    model.roi_heads.mask_predictor = MaskRCNNPredictor(in_features_mask,hidden_layer,num_classes)
+    return model
 
 def heatmaps_to_locs(heatmaps):
     num_images = heatmaps.shape[0]
@@ -97,6 +120,10 @@ def build_network_transform(minSize=800, maxSize=1333, mean=None, std=None):
     
     return transform
 
+def build_mask_transform():
+    transform = T.Compose([T.ToTensor()])
+    return transform
+
 ## Try to get it onto GPU:
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -111,19 +138,25 @@ parser.add_argument('--calib_file', default='/data/birds/postures/calibrations/b
 args = parser.parse_args()
 
 transform = build_transform()
-network_transform = build_network_transform()
-
+network_transform = build_mask_transform()
+"""
 backbone = resnet_fpn_backbone(backbone_name='resnet101', pretrained=False)
 model = MaskRCNN(backbone, num_classes=2)
+"""
+
+model_save = '/home/ammon/Documents/Scripts/bird_segment/model_9.pt'
+model = get_model_instance_segmentation(2)
 model.to(device)
-model.transform = network_transform
+#model.transform = network_transform
 model.eval()
 #model.load_state_dict(torch.load('/NAS/home/MaskRCNN_Torch_Bird/MaskRCNN_Torch_Bird/model_5.pth'))
-model.load_state_dict(torch.load('/home/ammon/Documents/Scripts/keypoint_detection/MaskRCNN_Torch_Bird/model_5.pth'))
+#model.load_state_dict(torch.load('/home/ammon/Documents/Scripts/keypoint_detection/MaskRCNN_Torch_Bird/model_5.pth'))
+model.load_state_dict(torch.load(model_save))
 
 out_dir = os.path.join(args.data_dir, args.video.split('.')[0])
 print('storing data to',out_dir)
-#"""#Comment out these lines if you are doing keypoints
+
+"""#Comment out these lines if you are doing keypoints
 model_keypoints = pose_resnet(resnet_layers=50, num_classes=20).cuda()
 model_keypoints.to(device)
 
@@ -143,7 +176,7 @@ out_dir = os.path.join(args.data_dir, args.video.split('.')[0])
 img_dir = os.path.join(out_dir, 'images')
 if not os.path.exists(img_dir):
     os.makedirs(img_dir)
-#"""# Uncomment
+"""# Uncomment
 
 cap = cv2.VideoCapture(os.path.join(args.data_dir, args.video))
 cnt = 0
@@ -161,10 +194,10 @@ while(1):
     frames_keypoints = []
     height, width = frame.shape[:2]
 ## Split out the mp4 frame into the 4 original camera frames (and convert to RGB)
-    frames.append(transform(Image.fromarray(frame[:height//2, :width//2, :]).convert('RGB')))
-    frames.append(transform(Image.fromarray(frame[:height//2, width//2:, :]).convert('RGB')))
-    frames.append(transform(Image.fromarray(frame[height//2:, :width//2, :]).convert('RGB')))
-    frames.append(transform(Image.fromarray(frame[height//2:, width//2:, :]).convert('RGB')))
+    frames.append(network_transform(Image.fromarray(frame[:height//2, :width//2, :]).convert('RGB')))
+    frames.append(network_transform(Image.fromarray(frame[:height//2, width//2:, :]).convert('RGB')))
+    frames.append(network_transform(Image.fromarray(frame[height//2:, :width//2, :]).convert('RGB')))
+    frames.append(network_transform(Image.fromarray(frame[height//2:, width//2:, :]).convert('RGB')))
     frames_orig.append(frame[:height//2, :width//2, :])
     frames_orig.append(frame[:height//2, width//2:, :])
     frames_orig.append(frame[height//2:, :width//2, :])
@@ -192,19 +225,20 @@ while(1):
 ###NOTE: Need to get this scaling right to both catch the tale and note fale everything
 ###NOTE: THIS IS WHERE I do voxel carving!! But I need to get the masks, not the boxes. outputs[i]['masks'][0]
 ## I think I can boot it up as a thread in python and it won't even slow me down. 
-        #scale = 1.2 * scale
-        scale = 1.4 * scale
+        scale = 1.2 * scale
+        #scale = 1.4 * scale
         scales.append(scale)
         min_x = max(center_x - 0.5 * scale, 0)
         min_y = max(center_y - 0.5 * scale, 0)
-        max_x = min(center_x + 0.5 * scale, width)
-        max_y = min(center_y + 0.5 * scale, height)
+        max_x = min(center_x + 0.5 * scale, width/2)
+        max_y = min(center_y + 0.5 * scale, height/2)
         box = np.array([min_x, min_y, max_x, max_y]).astype(int)
         box_keypoints = np.array([ [min_x, min_y], [min_x, max_y], [max_x, min_y], [max_x, max_y] ]) 
         box = box.astype(int)
         boxes.append(box)
         offset.append([min_x, min_y])
-        frames_keypoints.append(keypoint_transform((Image.fromarray(frames_orig[i]), box_keypoints)))
+# UNCOMMENT for keypoint detection
+        #frames_keypoints.append(keypoint_transform((Image.fromarray(frames_orig[i]), box_keypoints)))
     count += 1
     masks = np.array(masks)
     #np.save(out_dir + '/mask_' + str(count),masks)
@@ -229,7 +263,7 @@ while(1):
     np.save(mask_name,masks)
     np.save(box_name,np.array(boxes))
 
-#    """Comment these out too if you're not doing keypoint
+    """Comment these out too if you're not doing keypoint
     keypoint_frames = torch.stack(frames_keypoints, dim=0).cuda()
     scale = torch.tensor(scales).cuda().view(-1)
     offset = torch.tensor(offset).cuda().view(-1, 2)
@@ -260,7 +294,7 @@ keypoints_2d = np.stack(keypoints_2d, axis=-1)
 np.save(os.path.join(out_dir, 'pred_keypoints_2d.npy'), keypoints_2d)
 # args.calib_file file should be the calibration.yaml file that Berndt generated
 compute_3d_pose(out_dir, calib_file=args.calib_file)
-#"""
+"""
 
 cloud_file = args.video.split('.')[0] + '_cloud.npy'
 volume_file = args.video.split('.')[0] + '_volume.npy'
