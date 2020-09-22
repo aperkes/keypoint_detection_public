@@ -59,7 +59,7 @@ def triangulate_points(x, P):
             error = error_raw * np.exp(2.0*(3.0 - (c1 + c2 + conf[j])))
 #            print(error_raw, ' cooked: ', error, ' c1: ', c1, ' c2: ', c2, ' c3: ', conf[j])
             re.append(error)
-        reproj_error[i] = np.median(np.array(re))
+        reproj_error[i] = np.nanmedian(np.array(re))
     ind = np.argmin(reproj_error)
 #    print('reproj error: ', reproj_error[ind], ' X: ', X[ind][:-1,0])
     return X[ind][:-1,0]

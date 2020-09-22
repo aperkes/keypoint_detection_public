@@ -3,8 +3,8 @@ trap break INT
 
 FILES=/data/birds/postures/birdview-2018/*wav.mp4
 
-#base_dir="/data/birds/postures/birdview-2018/"
-base_dir="/data/tmp/"
+base_dir="/data/birds/postures/birdview-2018/"
+#base_dir="/data/tmp/"
 calib_dir="/data/birds/postures/calibrations/birdview/"
 
 for f in $FILES
@@ -17,5 +17,5 @@ for f in $FILES
          
         echo $calib_name
         #python /home/ammon/Documents/Scripts/keypoint_detection/eval.py --data_dir=$base_dir --video=$f --checkpoint=/home/ammon/Documents/Scripts/keypoint_detection/models/keypoint_model_checkpoint.pt --calib=$calib_name
-        python /home/ammon/Documents/Scripts/keypoint_detection/eval.py --data_dir=$base_dir --video=$file_trim.mp4 --checkpoint=/home/ammon/Documents/Scripts/keypoint_detection/models/keypoint_model_checkpoint.pt --calib=$calib_name
+        python /home/ammon/Documents/Scripts/keypoint_detection/eval.py --data_dir=$base_dir --video=$file_trim.mp4 --calib=$calib_name
     done

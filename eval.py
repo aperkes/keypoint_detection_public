@@ -21,10 +21,10 @@ from models import pose_resnet2
 import argparse
 
 #from compute_3d_pose import compute_3d_pose
-from voxel_keypoints import voxel_keypoints3
-from voxel_keypoints import voxel_keypoints2
-from voxel_keypoints import voxel_keypoints
-from voxel_keypoints import voxel_keypoints4
+#from voxel_keypoints import voxel_keypoints3
+#from voxel_keypoints import voxel_keypoints2
+#from voxel_keypoints import voxel_keypoints
+#from voxel_keypoints import voxel_keypoints4
 
 
 sys.path.append('./lib') ## NEeded to run some of the HRN code
@@ -227,6 +227,7 @@ parser.add_argument('--checkpoint', default='/home/ammon/Documents/Scripts/keypo
 parser.add_argument('--data_dir', default=None, required=True, help='Directory containing video')
 parser.add_argument('--video', default=None, required=True, help='Video name')
 parser.add_argument('--visualize', default=False, action='store_true', help='Save frames and visualize keypoints')
+parser.add_argument('--point_cloud', default=False,action='store_true',help='Calculate and store point clouds')
 parser.add_argument('--calib_file', default=None, help='Camera calibration')
 parser.add_argument('--cfg',default='/home/ammon/Documents/Scripts/deep-high-resolution-net.pytorch/demo/inference-bird-config.yaml',required=False,help='YAML config file, pulls the right one by defualt if on my computer')
 parser.add_argument('opts',help='Modify config options using the command-line',
@@ -297,6 +298,12 @@ cnt = 0
 keypoints_2d= []
 keypoints_3d= []
 clouds = []
+blank_2d = np.empty([4,17,3])
+blank_2d.fill(np.nan)
+blank_3d = np.empty([4,17,3])
+blank_3d.fill(np.nan)
+blank_cloud = []
+
 while(1):
     print('processing frame:',cnt)
     cnt += 1
@@ -322,6 +329,18 @@ while(1):
         outputs = model([f.cuda() for f in frames])
     # import ipdb
     # ipdb.set_trace()
+## Need to deal with when boxes are missing. This is a bit hacky, but works
+    SKIP = False
+    for i in range(len(frames)):
+        if len(outputs[i]['boxes']) == 0:
+            print('no bird spotted in frame',i,': storying empty keypoints')
+            keypoints_2d.append(np.array(blank_2d))
+            keypoints_3d.append(np.array(blank_3d))
+            clouds.append(blank_cloud)
+            SKIP = True
+            break
+    if SKIP:
+        continue
     boxes = []
     masks = []
     offset = []
@@ -407,7 +426,7 @@ while(1):
         max_y = boxes[i][3]
         heatmaps[i, :, min_y:max_y, min_x:max_x] = heatmaps_orig
     """
-    if True:
+    if args.point_cloud:
         print('starting voxel carving')
         cloud,res = iterate_voxels(masks,args.calib_file,cnt)
         clouds.append(cloud) 
@@ -442,18 +461,18 @@ while(1):
             img_fname = os.path.join(img_dir, 'frame_'+frame_num+'_cam_'+str(i)+'.jpg')
             cv2.imwrite(img_fname, I[:, :, ::-1])
 
+#import pdb
+#pdb.set_trace()
 keypoints_2d = np.array(keypoints_2d)
 keypoints_2d = np.moveaxis(keypoints_2d,0,3)
 
-if True:
+if args.point_cloud:
     volumes = [len(cloud) for cloud in clouds]
     cloud_array = np.empty([len(clouds),max(volumes),3])
     cloud_array.fill(np.nan)
-    import pdb
-    pdb.set_trace()
     for i in range(len(clouds)):
         cloud_array[i,:len(clouds[i])] = clouds[i]
-np.save(os.path.join(out_dir, 'cloud_3d.npy'),cloud_array)
+    np.save(os.path.join(out_dir, 'cloud_3d.npy'),cloud_array)
 
 #keypoints_2d = np.stack(keypoints_2d, axis=-1)
 #keypoints_3d = np.stack(keypoints_3d, axis=-1)
