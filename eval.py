@@ -20,8 +20,7 @@ from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 from models import pose_resnet2
 import argparse
 
-from visualize_keypoints import visualization_keypoints, draw_skeleton
-from compute_3d_pose import compute_3d_pose
+#from compute_3d_pose import compute_3d_pose
 from voxel_keypoints import voxel_keypoints3
 from voxel_keypoints import voxel_keypoints2
 from voxel_keypoints import voxel_keypoints
@@ -33,6 +32,8 @@ sys.path.append('./lib') ## NEeded to run some of the HRN code
 from config import cfg
 from config import update_config
 from utils.transforms import get_affine_transform
+from utils.compute_3d import compute_3d_pose,iterate_voxels
+from utils.visualize_keypoints import visualization_keypoints, draw_skeleton
 from core.inference import get_final_preds
 
 ## Helper function to build model
@@ -58,9 +59,9 @@ def get_model_instance_segmentation(num_classes):
 def get_resnet_pose_model(args):
     pose_model = pose_resnet2.get_pose_net(cfg,is_train=False)
     #pose_model = eval('models.'+cfg.MODEL.NAME + '.get_pose_net')(cfg,is_train=False)
-    if cfg.TEST.MODEL_FILE:
-        print('=> loading model from {}'.format(cfg.TEST.MODEL_FILE))
-        pose_model.load_state_dict(torch.load(cfg.TEST.MODEL_FILE), strict=False)
+    if args.checkpoint != None:
+        print('=> loading model from {}'.format(args.checkpoint))
+        pose_model.load_state_dict(torch.load(args.checkpoint), strict=False)
     pose_model.to(device)
     pose_model.eval()
     return pose_model
@@ -293,8 +294,9 @@ if not os.path.exists(img_dir):
     os.makedirs(img_dir)
 cap = cv2.VideoCapture(os.path.join(args.data_dir, args.video))
 cnt = 0
-keypoints_2d = []
+keypoints_2d= []
 keypoints_3d= []
+clouds = []
 while(1):
     print('processing frame:',cnt)
     cnt += 1
@@ -321,6 +323,7 @@ while(1):
     # import ipdb
     # ipdb.set_trace()
     boxes = []
+    masks = []
     offset = []
     scales = []
     centers = []
@@ -328,15 +331,17 @@ while(1):
     frame_num = str(cnt).zfill(6)
     for i in range(len(frames)):
         box = outputs[i]['boxes'][0].cpu().numpy()
+        mask = outputs[i]['masks'][0][0].cpu().numpy()
+        masks.append(mask)
         boxes.append(box)
         #print(box)
 ## Convert box to the box_to_center format
-        x_edge = box[0] + box[2]
-        y_edge = box[1] + box[3]
+        x_edge = box[2]
+        y_edge = box[3]
         box_corners = [(box[0],box[1]),(x_edge,y_edge)]
          
         center,scale = box_to_center_scale(box_corners,cfg.MODEL.IMAGE_SIZE[0], cfg.MODEL.IMAGE_SIZE[1])
-        scale = scale * 1.2
+        #scale = scale * 1.2
         centers.append(center)
         scales.append(scale)
         """
@@ -369,23 +374,27 @@ while(1):
             flags=cv2.INTER_LINEAR)
         #frames_keypoints.append(keypoint_transform((Image.fromarray(frames_orig[i]), box_keypoints)))
         frames_keypoints.append(pose_transform(model_input))
-    keypoint_frames = torch.stack(frames_keypoints, dim=0).cuda()
+        #import pdb
+        #pdb.set_trace()
+    keypoint_frames = torch.stack(frames_keypoints)
 ## This is old code, it needs to change somehow? 
     #scale = torch.tensor(scales).cuda().view(-1)
     #offset = torch.tensor(offset).cuda().view(-1, 2)
 
     with torch.no_grad():
-        output = model_keypoints(keypoint_frames)
+        output = model_keypoints(keypoint_frames.to(device))
 ## For some reason it's getting stuck here? 
-        coords,max_vals = get_final_preds(
-            cfg,
-            output.cpu().detach().numpy(),
-            np.asarray(centers),
-            np.asarray(scales))
-        keypoint_locs = coords
-        #keypoint_locs = torch.from_numpy(heatmaps_to_locs(output)).cuda()
-        #keypoint_locs[:,:,:-1] = keypoint_locs[:,:,:-1] * 4 * scale[:,None,None] / 256.
-        #keypoint_locs[:,:,:-1] += offset[:,None,:]
+    keypoint_locs,max_vals = get_final_preds(
+        cfg,
+        output.cpu().detach().numpy(),
+        np.asarray(centers),
+        np.asarray(scales))
+    #import pdb
+    #pdb.set_trace()
+    keypoints_2d.append(np.dstack([keypoint_locs,max_vals]))
+    #keypoint_locs = torch.from_numpy(heatmaps_to_locs(output)).cuda()
+    #keypoint_locs[:,:,:-1] = keypoint_locs[:,:,:-1] * 4 * scale[:,None,None] / 256.
+    #keypoint_locs[:,:,:-1] += offset[:,None,:]
 
     """
     heatmaps = np.zeros((len(frames), output.shape[1], 1024, 1024))
@@ -398,40 +407,60 @@ while(1):
         max_y = boxes[i][3]
         heatmaps[i, :, min_y:max_y, min_x:max_x] = heatmaps_orig
     """
-    if False:
+    if True:
         print('starting voxel carving')
-        round1 = voxel_keypoints3(heatmaps,args.calib_file,res=100)
-        round2 = voxel_keypoints3(heatmaps,args.calib_file,res=20,grids=round1)
-        round3 = voxel_keypoints3(heatmaps,args.calib_file,res=5,grids=round2)
-        points,_ =  voxel_keypoints3(heatmaps,args.calib_file,res=1,grids=round3)
+        cloud,res = iterate_voxels(masks,args.calib_file,cnt)
+        clouds.append(cloud) 
+        #round1 = voxel_keypoints3(heatmaps,args.calib_file,res=100)
+        #round2 = voxel_keypoints3(heatmaps,args.calib_file,res=20,grids=round1)
+        #round3 = voxel_keypoints3(heatmaps,args.calib_file,res=5,grids=round2)
+        #points,_ =  voxel_keypoints3(heatmaps,args.calib_file,res=1,grids=round3)
         #keypoints_3d.append(round3[0])
-        keypoints_3d.append(points)
+        #keypoints_3d.append(points)
     #keypoints_3d.append(voxel_keypoints4(heatmaps, args.calib_file))
     #keypoint_locs = keypoint_locs.cpu().numpy()
-    keypoints_2d.append(keypoint_locs)
 
-    """
-    for i in range(4):
-        I = frames_orig[i].astype(np.uint8)
-        box = boxes[i]
-        start = (box[0],box[1])
-        end = (box[2], box[3])
-        I = cv2.rectangle(I, start, end, [255,0,0],  thickness=5)
-        keypoint = keypoint_locs[i, :, :-1]
-        vkeypoint = {}
-        for key in visualization_keypoints.keys():
-            vkeypoint[key] = keypoint[visualization_keypoints[key], :2]
-        if args.visualize:
-            I = draw_skeleton(I, vkeypoint, radius=4)
+    if args.visualize:
+## plot the stuff
+        for i in range(4):
+            I = frames_orig[i].astype(np.uint8)
+            box = boxes[i]
+            start = (box[0],box[1])
+            end = (box[2], box[3])
+            I = cv2.rectangle(I, start, end, [255,0,0],  thickness=5)
+            keypoint = keypoint_locs[i, :, :-1]
+            vkeypoint = {}
+            I = cv2.circle(I, (centers[i][0],centers[i][1]) ,7,[0,255,0],-1)
+            for key in visualization_keypoints.keys():
+                val = visualization_keypoints[key]
+                vkeypoint[val] = keypoint[key, :2]
+                if True:
+                    x,y = keypoint_locs[i,key,:2]
+                    I = cv2.circle(I, (int(x),int(y)),3,[255,0,255],-1)
+            if False:
+                I = draw_skeleton(I, vkeypoint, radius=4,draw_edges=False)
             img_fname = os.path.join(img_dir, 'frame_'+frame_num+'_cam_'+str(i)+'.jpg')
             cv2.imwrite(img_fname, I[:, :, ::-1])
-    cnt += 1
-    """
 
+keypoints_2d = np.array(keypoints_2d)
+keypoints_2d = np.moveaxis(keypoints_2d,0,3)
 
-keypoints_2d = np.stack(keypoints_2d, axis=-1)
+if True:
+    volumes = [len(cloud) for cloud in clouds]
+    cloud_array = np.empty([len(clouds),max(volumes),3])
+    cloud_array.fill(np.nan)
+    import pdb
+    pdb.set_trace()
+    for i in range(len(clouds)):
+        cloud_array[i,:len(clouds[i])] = clouds[i]
+np.save(os.path.join(out_dir, 'cloud_3d.npy'),cloud_array)
+
+#keypoints_2d = np.stack(keypoints_2d, axis=-1)
 #keypoints_3d = np.stack(keypoints_3d, axis=-1)
 np.save(os.path.join(out_dir, 'pred_keypoints_2d.npy'), keypoints_2d)
 #np.save(os.path.join(out_dir,'pred_keypoints_3d.npy'),keypoints_3d)
 # args.calib_file file should be the calibration.yaml file that Berndt generated
-#compute_3d_pose(out_dir, calib_file=args.calib_file)
+if args.calib_file != None:
+    keypoints_3d = compute_3d_pose(keypoints_2d, calib_file=args.calib_file)
+    np.save(os.path.join(out_dir,'pred_keypoints_3d.npy'),keypoints_3d)
+print('I did it!')
