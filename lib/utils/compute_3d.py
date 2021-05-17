@@ -68,7 +68,7 @@ def compute_3d_pose(keypoints, calib_file='/NAS/home/bird_postures/postures_2017
     try:
         _, _, P, _ = get_camera_params(calib_file)
     except:
-        print('Calibration file does not exist')
+        print('Something wrong with calibration file:',calib_file)
         return
         
     if isinstance(keypoints, str):
@@ -101,7 +101,10 @@ def voxel_carving(masks,calib_file,count=0,res=50,grids = [[[250,250,250]],250],
 
     dim_v,dim_u = np.shape(masks[0])
     n_blocks = round(DIMS[0] // res)
+    #print('mask shape:',np.shape(masks[0]))
+    #cv2.imwrite('test_mask.png',masks[0] * 255)
     course_dims = np.array(np.shape(masks[0])) / (n_blocks)
+    #print('n_blocks:',n_blocks)
     #course_dims = [n_blocks,n_blocks]
     
     all_points = []
@@ -137,14 +140,16 @@ def voxel_carving(masks,calib_file,count=0,res=50,grids = [[[250,250,250]],250],
             checked_points[(x,y,z)] = 1
         for c in range(4):
             mask = course_masks[c]
+            #print(mask.shape)
             u,v = reproj_points[c][:2,p]
             if u < 0 or v < 0:
                 break
             elif u >= dim_u or v >= dim_v:
                 break
             #pdb.set_trace()
-            u_c = int(u / course_dims[0])
-            v_c = int(v / course_dims[1])
+            #print(course_dims,u,v)
+            u_c = int(u / course_dims[1])
+            v_c = int(v / course_dims[0])
             if mask[v_c,u_c] >= MASK_THRESH:
                 checks += 1
                 if checks == 4:

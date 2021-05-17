@@ -464,6 +464,8 @@ while(1):
 #import pdb
 #pdb.set_trace()
 keypoints_2d = np.array(keypoints_2d)
+#import pdb
+#pdb.set_trace()
 keypoints_2d = np.moveaxis(keypoints_2d,0,3)
 
 if args.point_cloud:
